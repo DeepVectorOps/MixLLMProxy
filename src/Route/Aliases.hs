@@ -9,6 +9,7 @@ import AppEnv (AppEnv, withPool)
 import DB (LlmAlias(..), getAliases, getAliasById, insertAlias, updateAlias, deleteAlias)
 import Common (icon, showT, basePage)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.Maybe (fromMaybe, isJust)
 import Control.Monad.IO.Class (liftIO)
 
@@ -23,7 +24,9 @@ validateAliasForm name url key model = T.null name || T.null url || T.null key |
 aliasesRoutes :: AppEnv -> ScottyM ()
 aliasesRoutes env = do
   get "/ui/aliases" $ renderAliases env Nothing T.empty T.empty T.empty Nothing
-  get "/ui/aliases/info" $ html $ renderText aliasesInfoPage
+  get "/ui/aliases/info" $ do
+    host <- fromMaybe "localhost" . fmap TL.toStrict <$> header "Host"
+    html $ renderText $ aliasesInfoPage host
 
   post "/ui/aliases/create" $ do
     name <- formParam "name"
@@ -100,8 +103,8 @@ aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage 
         th_ "Actions"
       tbody_ $ mapM_ aliasRow aliases
 
-aliasesInfoPage :: Html ()
-aliasesInfoPage = basePage "LLMHouse — Aliases Info" $ do
+aliasesInfoPage :: T.Text -> Html ()
+aliasesInfoPage host = basePage "LLMHouse — Aliases Info" $ do
   div_ [class_ "header-row"] $ do
     h1_ (icon "info" >> " Alias Info")
   p_ [class_ "subtitle"] "How aliases work"
@@ -119,7 +122,7 @@ aliasesInfoPage = basePage "LLMHouse — Aliases Info" $ do
       strong_ "deepseek-v4-flash"
       ". Then:"
     pre_ [class_ "code-block"] $ code_ (toHtml $ T.intercalate "\n"
-      [ "curl -X POST http://llmhouse.chris/api/openai/v1/chat/completions \\"
+      [ "curl -X POST http://" <> host <> "/api/openai/v1/chat/completions \\"
       , "  -H \"Content-Type: application/json\" \\"
       , "  -d '{\"model\":\"test-bob\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'"
       ])
