@@ -8,7 +8,6 @@ module Common
   , faviconSvg
   , baseHead
   , basePage
-  , baseStyles
   , queryParamDefault
   ) where
 
@@ -32,30 +31,19 @@ faviconSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewB
 icon :: T.Text -> Html ()
 icon name = i_ [class_ ("ph ph-" <> name)] ""
 
-baseStyles :: T.Text
-baseStyles = T.intercalate "\n"
-  [ "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 20px; background: #0d1117; color: #c9d1d9; }"
-  , ".header-row { display: flex; align-items: center; gap: 16px; }"
-  , "h1 { color: #58a6ff; margin: 0; }"
-  , ".subtitle { color: #8b949e; margin-top: 4px; }"
-  , "table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }"
-  , "th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #21262d; color: #8b949e; font-weight: 600; white-space: nowrap; }"
-  , "td { padding: 8px 12px; border-bottom: 1px solid #21262d; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"
-  ]
-
-baseHead :: T.Text -> T.Text -> Html ()
-baseHead titleText css = head_ $ do
+baseHead :: T.Text -> Html ()
+baseHead titleText = head_ $ do
   meta_ [charset_ "utf-8"]
   meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1"]
   title_ (toHtml titleText)
   link_ [rel_ "icon", type_ "image/svg+xml", href_ faviconSvg]
   link_ [rel_ "stylesheet", href_ "https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"]
   link_ [rel_ "stylesheet", href_ "https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css"]
-  style_ [type_ "text/css"] css
+  link_ [rel_ "stylesheet", href_ "/styles.css"]
 
-basePage :: T.Text -> T.Text -> Html () -> Html ()
-basePage titleText css bodyContent = doctype_ >> html_ [lang_ "en"] (do
-  baseHead titleText css
+basePage :: T.Text -> Html () -> Html ()
+basePage titleText bodyContent = doctype_ >> html_ [lang_ "en"] (do
+  baseHead titleText
   body_ bodyContent
   )
 

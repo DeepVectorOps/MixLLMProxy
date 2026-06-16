@@ -19,6 +19,9 @@ dependencies:
 - resource-pool
 - string-conversions
 - neat-interpolation
+- wai
+- wai-middleware-static
+- wai-extra
 
 executables:
   app:

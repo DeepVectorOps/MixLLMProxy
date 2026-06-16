@@ -7,7 +7,7 @@ import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
 import DB (LlmRequest(..), LlmStats(..), getRecentRequests, getRequest, countRequests, getStats)
-import Common (icon, showT, maybeDash, basePage, baseStyles, queryParamDefault)
+import Common (icon, showT, maybeDash, basePage, queryParamDefault)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -39,12 +39,12 @@ uiRoutes env = do
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
     stats <- liftIO $ withPool env $ \conn -> getStats conn
     host <- header "Host"
-    html $ renderText $ basePage "LLMHouse" styles $ page host requests pageNum totalPages stats
+    html $ renderText $ basePage "LLMHouse" $ page host requests pageNum totalPages stats
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
     case mreq of
-      Just req -> html $ renderText $ basePage ("LLMHouse — Request #" <> showT (lrId req)) detailStyles $ detailPage req
+      Just req -> html $ renderText $ basePage ("LLMHouse — Request #" <> showT (lrId req)) $ detailPage req
       Nothing -> html "not found"
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> Html ()
@@ -146,44 +146,6 @@ statusClass (Just s)
   | s >= 500 = "status-fail"
   | otherwise = ""
 statusClass Nothing = ""
-
-styles :: T.Text
-styles = baseStyles <> T.intercalate "\n"
-  [ ".stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }"
-  , ".stat-box { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }"
-  , ".stat-icon { color: #58a6ff; font-size: 18px; }"
-  , ".stat-label { color: #8b949e; font-size: 11px; }"
-  , ".stat-value { color: #c9d1d9; font-size: 18px; font-weight: 600; }"
-  , ".endpoint { background: #1a2130; color: #58a6ff; padding: 4px 10px; border-radius: 6px; font-size: 12px; }"
-  , ".nav-btn { background: #161b22; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; padding: 5px 12px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }"
-  , ".nav-btn:hover { background: #1a2130; border-color: #58a6ff; }"
-  , ".req-row { cursor: pointer; }"
-  , ".req, .resp { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }"
-  , ".len { white-space: nowrap; color: #8b949e; font-size: 11px; }"
-  , ".latency { white-space: nowrap; }"
-  , ".model { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }"
-  , ".alias { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }"
-  , ".status-ok { color: #3fb950; }"
-  , ".status-err { color: #d29922; }"
-  , ".status-fail { color: #f85149; }"
-  , ".pagination { margin-top: 16px; display: flex; align-items: center; gap: 12px; }"
-  , ".pagination a { color: #58a6ff; text-decoration: none; }"
-  , ".pagination .disabled { color: #484f58; }"
-  , ".page-info { color: #8b949e; }"
-  ]
-
-detailStyles :: T.Text
-detailStyles = styles <> T.intercalate "\n"
-  [ "a { color: #58a6ff; text-decoration: none; }"
-  , ".detail td { white-space: normal; max-width: none; }"
-  , ".detail .label { color: #8b949e; font-weight: 600; width: 120px; white-space: nowrap; }"
-  , ".body { background: #161b22; padding: 16px; border-radius: 6px; font-size: 12px; overflow-y: auto; overflow-x: hidden; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; }"
-  , ".body * { overflow-wrap: break-word; word-break: break-all; white-space: normal; text-wrap: wrap; }"
-  , ".bodies { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }"
-  , ".body-col { min-width: 0; }"
-  , "@media (max-width: 768px) { .bodies { grid-template-columns: 1fr; } }"
-  , "h2 { color: #8b949e; margin-top: 24px; font-size: 14px; }"
-  ]
 
 refreshScript :: T.Text
 refreshScript = "setTimeout(function() { window.location.reload(); }, 10000);"

@@ -7,7 +7,7 @@ import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
 import DB (LlmAlias(..), getAliases, getAliasById, insertAlias, updateAlias, deleteAlias)
-import Common (icon, showT, basePage, baseStyles)
+import Common (icon, showT, basePage)
 import qualified Data.Text as T
 import Data.Maybe (fromMaybe, isJust)
 import Control.Monad.IO.Class (liftIO)
@@ -61,7 +61,7 @@ aliasesRoutes env = do
     redirect "/ui/aliases"
 
 aliasesPage :: [LlmAlias] -> Maybe Int -> T.Text -> T.Text -> T.Text -> Maybe T.Text -> Html ()
-aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage "LLMHouse — Aliases" aliasesStyles $ do
+aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage "LLMHouse — Aliases" $ do
   div_ [class_ "header-row"] $ do
     h1_ "Aliases"
   p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
@@ -100,30 +100,8 @@ aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage 
         th_ "Actions"
       tbody_ $ mapM_ aliasRow aliases
 
-aliasesStyles :: T.Text
-aliasesStyles = baseStyles <> T.intercalate "\n"
-  [ ".form-section { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px; margin: 16px 0; }"
-  , ".form-grid { display: grid; grid-template-columns: 120px 1fr; gap: 8px 12px; align-items: center; }"
-  , ".form-grid label { color: #8b949e; font-size: 13px; }"
-  , ".form-grid input { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; }"
-  , ".form-grid input:focus { border-color: #58a6ff; outline: none; }"
-  , ".form-actions { grid-column: 1 / -1; margin-top: 8px; display: flex; gap: 8px; }"
-  , ".btn-save { background: #238636; color: white; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }"
-  , ".btn-save:hover { background: #2ea043; }"
-  , ".btn-cancel { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 13px; }"
-  , ".btn-danger { background: #da3633; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }"
-  , ".btn-danger:hover { background: #f85149; }"
-  , ".btn-edit { background: #21262d; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }"
-  , ".error { background: #490202; color: #f85149; border: 1px solid #da3633; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }"
-  , ".empty { color: #484f58; }"
-  , ".actions { display: flex; gap: 8px; }"
-  , ".form-inline { display: inline; }"
-  , ".nav-btn { background: #161b22; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; padding: 5px 12px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }"
-  , ".nav-btn:hover { background: #1a2130; border-color: #58a6ff; }"
-  ]
-
 aliasesInfoPage :: Html ()
-aliasesInfoPage = basePage "LLMHouse — Aliases Info" infoStyles $ do
+aliasesInfoPage = basePage "LLMHouse — Aliases Info" $ do
   div_ [class_ "header-row"] $ do
     h1_ (icon "info" >> " Alias Info")
   p_ [class_ "subtitle"] "How aliases work"
@@ -152,22 +130,6 @@ aliasesInfoPage = basePage "LLMHouse — Aliases Info" infoStyles $ do
       strong_ "deepseek-v4-flash"
       "."
     p_ "No matching alias gives a 400 error."
-
-infoStyles :: T.Text
-infoStyles = baseStyles <> T.intercalate "\n"
-  [ ".info-section { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 16px 24px; margin: 16px 0; }"
-  , ".info-section h2 { color: #58a6ff; font-size: 15px; margin-top: 20px; margin-bottom: 6px; }"
-  , ".info-section h2:first-child { margin-top: 0; }"
-  , ".info-section p, .info-section li { color: #8b949e; font-size: 13px; line-height: 1.6; }"
-  , ".info-section ul, .info-section ol { margin: 6px 0; padding-left: 20px; }"
-  , ".info-section li { margin-bottom: 4px; }"
-  , ".mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: #c9d1d9; }"
-  , ".code-block { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px 16px; overflow-x: auto; margin: 10px 0; }"
-  , ".code-block code { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; color: #7ee787; line-height: 1.5; }"
-  , "strong { color: #e6edf3; font-weight: 600; }"
-  , ".nav-btn { background: #161b22; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; padding: 5px 12px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }"
-  , ".nav-btn:hover { background: #1a2130; border-color: #58a6ff; }"
-  ]
 
 aliasRow :: LlmAlias -> Html ()
 aliasRow a = tr_ $ do
