@@ -12,6 +12,7 @@ module DB
   , LlmRequest(..)
   , LlmStats(..)
   , getStats
+  , getAliasCounts
   , LlmAlias(..)
   , getAliases
   , getAliasByName
@@ -130,6 +131,10 @@ getStats :: Connection -> IO LlmStats
 getStats conn = do
   [s] <- query_ conn "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), COALESCE(SUM(total_tokens),0) FROM llm_requests"
   pure s
+
+getAliasCounts :: Connection -> IO [(Text, Int)]
+getAliasCounts conn = do
+  query_ conn "SELECT COALESCE(alias_name, '(direct)'), COUNT(*) FROM llm_requests GROUP BY alias_name ORDER BY COUNT(*) DESC"
 
 aliasColumns :: Query
 aliasColumns = fromString $ cs [text|

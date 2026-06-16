@@ -6,13 +6,14 @@ module Route.UI (uiRoutes) where
 import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
-import DB (LlmRequest(..), LlmStats(..), getRecentRequests, getRequest, countRequests, getStats, truncateRequests)
+import DB (LlmRequest(..), LlmStats(..), getRecentRequests, getRequest, countRequests, getStats, truncateRequests, getAliasCounts)
 import Common (icon, showT, maybeDash, basePage, queryParamDefault)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Data.Maybe (fromMaybe)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad (zipWithM_)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Encode.Pretty as AP
 
@@ -24,9 +25,25 @@ fmtLatency ms
 
 statBox :: T.Text -> T.Text -> T.Text -> Html ()
 statBox iconName label value = div_ [class_ "stat-box"] $ do
-  span_ [class_ "stat-icon"] (icon iconName)
-  span_ [class_ "stat-label"] (toHtml label)
-  span_ [class_ "stat-value"] (toHtml value)
+  div_ [class_ "stat-row"] $ do
+    span_ [class_ "stat-icon"] (icon iconName)
+    span_ [class_ "stat-label"] (toHtml label)
+    span_ [class_ "stat-value"] (toHtml value)
+
+totalBox :: T.Text -> [(T.Text, Int)] -> Html ()
+totalBox total aliasCounts = div_ [class_ "stat-box"] $ do
+  span_ [class_ "stat-icon"] (icon "ph-database")
+  div_ [class_ "stat-body"] $ do
+    div_ [class_ "stat-row"] $ do
+      span_ [class_ "stat-label"] "Total Requests"
+      span_ [class_ "stat-value"] (toHtml total)
+    div_ [class_ "alias-breakdown"] $
+      zipWithM_ (\(alias, count) color ->
+        span_ [class_ "alias-chip", style_ ("color:" <> color <> ";border-color:" <> color)] (toHtml (alias <> ": " <> showT count))
+      ) aliasCounts chipColors
+
+chipColors :: [T.Text]
+chipColors = ["#58a6ff", "#3fb950", "#d29922", "#f85149", "#a371f7", "#79c0ff", "#56d364", "#e3b341"]
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
@@ -38,8 +55,9 @@ uiRoutes env = do
     total <- liftIO $ withPool env $ \conn -> countRequests conn
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
     stats <- liftIO $ withPool env $ \conn -> getStats conn
+    aliasCounts <- liftIO $ withPool env $ \conn -> getAliasCounts conn
     host <- header "Host"
-    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages stats
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages stats aliasCounts
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
@@ -50,8 +68,8 @@ uiRoutes env = do
     liftIO $ withPool env $ \conn -> truncateRequests conn
     redirect "/ui/"
 
-page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> Html ()
-page host requests pageNum totalPages stats = do
+page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> [(T.Text, Int)] -> Html ()
+page host requests pageNum totalPages stats aliasCounts = do
     div_ [class_ "header-row"] $ do
       h1_ "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
@@ -62,7 +80,7 @@ page host requests pageNum totalPages stats = do
       form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
     div_ [class_ "stats"] $ do
-      statBox "ph-database" "Total Requests" (showT (lsTotalRequests stats))
+      totalBox (showT (lsTotalRequests stats)) aliasCounts
       statBox "ph-arrow-line-down" "Total Prompt Tokens" (maybeDash (lsTotalPromptTokens stats))
       statBox "ph-arrow-line-up" "Total Completion Tokens" (maybeDash (lsTotalCompletionTokens stats))
       statBox "ph-equals" "Total Tokens" (maybeDash (lsTotalTokens stats))
