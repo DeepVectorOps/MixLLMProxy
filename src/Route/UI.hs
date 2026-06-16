@@ -6,7 +6,7 @@ module Route.UI (uiRoutes) where
 import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
-import DB (LlmRequest(..), LlmStats(..), getRecentRequests, getRequest, countRequests, getStats)
+import DB (LlmRequest(..), LlmStats(..), getRecentRequests, getRequest, countRequests, getStats, truncateRequests)
 import Common (icon, showT, maybeDash, basePage, queryParamDefault)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -46,17 +46,21 @@ uiRoutes env = do
     case mreq of
       Just req -> html $ renderText $ basePage ("MixLLMProxy — Request #" <> showT (lrId req)) $ detailPage req
       Nothing -> html "not found"
+  post "/ui/truncate" $ do
+    liftIO $ withPool env $ \conn -> truncateRequests conn
+    redirect "/ui/"
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> Html ()
 page host requests pageNum totalPages stats = do
     div_ [class_ "header-row"] $ do
-      h1_ "MixLLMProxy"
+      h1_ "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
       a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let base = fromMaybe "localhost" (TL.toStrict <$> host)
           endpoint = T.concat ["http://", base, "/api/openai/v1/chat/completions"]
       code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
-    p_ [class_ "subtitle"] "LLM proxy with observability"
+      form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
+        button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
     div_ [class_ "stats"] $ do
       statBox "ph-database" "Total Requests" (showT (lsTotalRequests stats))
       statBox "ph-arrow-line-down" "Total Prompt Tokens" (maybeDash (lsTotalPromptTokens stats))
@@ -105,7 +109,6 @@ detailRow iconName label value = tr_ $ do
 
 detailPage :: LlmRequest -> Html ()
 detailPage r = do
-    a_ [href_ "/ui/"] (icon "ph-caret-left" >> " Back")
     h1_ (toHtml ("Request #" <> showT (lrId r)))
     table_ [class_ "detail"] $ do
       detailRow "ph-fingerprint" "ID" (toHtml (showT (lrId r)))

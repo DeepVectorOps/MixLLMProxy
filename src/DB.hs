@@ -8,6 +8,7 @@ module DB
   , getRecentRequests
   , getRequest
   , countRequests
+  , truncateRequests
   , LlmRequest(..)
   , LlmStats(..)
   , getStats
@@ -171,3 +172,7 @@ updateAlias conn aid name url key model =
 deleteAlias :: Connection -> Int -> IO ()
 deleteAlias conn aid =
   void $ execute conn "DELETE FROM aliases WHERE id = ?" (Only aid)
+
+truncateRequests :: Connection -> IO ()
+truncateRequests conn =
+  void $ execute_ conn "TRUNCATE TABLE llm_requests"

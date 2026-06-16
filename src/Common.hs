@@ -29,7 +29,7 @@ faviconSvg :: T.Text
 faviconSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔭%3C/text%3E%3C/svg%3E"
 
 icon :: T.Text -> Html ()
-icon name = i_ [class_ ("ph ph-" <> name)] ""
+icon name = i_ [class_ ("ph " <> if "ph-" `T.isPrefixOf` name then name else "ph-" <> name)] ""
 
 baseHead :: T.Text -> Html ()
 baseHead titleText = head_ $ do
