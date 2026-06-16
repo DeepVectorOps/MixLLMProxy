@@ -64,7 +64,7 @@ aliasesRoutes env = do
     redirect "/ui/aliases"
 
 aliasesPage :: [LlmAlias] -> Maybe Int -> T.Text -> T.Text -> T.Text -> Maybe T.Text -> Html ()
-aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage "LLMHouse — Aliases" $ do
+aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage "MixLLMProxy — Aliases" $ do
   div_ [class_ "header-row"] $ do
     h1_ "Aliases"
   p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
@@ -104,7 +104,7 @@ aliasesPage aliases editId nameFilled urlFilled modelFilled errorMsg = basePage 
       tbody_ $ mapM_ aliasRow aliases
 
 aliasesInfoPage :: T.Text -> Html ()
-aliasesInfoPage host = basePage "LLMHouse — Aliases Info" $ do
+aliasesInfoPage host = basePage "MixLLMProxy — Aliases Info" $ do
   div_ [class_ "header-row"] $ do
     h1_ (icon "info" >> " Alias Info")
   p_ [class_ "subtitle"] "How aliases work"

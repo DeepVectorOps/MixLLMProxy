@@ -39,24 +39,24 @@ uiRoutes env = do
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
     stats <- liftIO $ withPool env $ \conn -> getStats conn
     host <- header "Host"
-    html $ renderText $ basePage "LLMHouse" $ page host requests pageNum totalPages stats
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages stats
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
     case mreq of
-      Just req -> html $ renderText $ basePage ("LLMHouse — Request #" <> showT (lrId req)) $ detailPage req
+      Just req -> html $ renderText $ basePage ("MixLLMProxy — Request #" <> showT (lrId req)) $ detailPage req
       Nothing -> html "not found"
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> Html ()
 page host requests pageNum totalPages stats = do
     div_ [class_ "header-row"] $ do
-      h1_ "LLMHouse"
+      h1_ "MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
       a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let base = fromMaybe "localhost" (TL.toStrict <$> host)
           endpoint = T.concat ["http://", base, "/api/openai/v1/chat/completions"]
       code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
-    p_ [class_ "subtitle"] "LLM proxy observatory"
+    p_ [class_ "subtitle"] "LLM proxy with observability"
     div_ [class_ "stats"] $ do
       statBox "ph-database" "Total Requests" (showT (lsTotalRequests stats))
       statBox "ph-arrow-line-down" "Total Prompt Tokens" (maybeDash (lsTotalPromptTokens stats))
