@@ -1,7 +1,7 @@
-name: HaskellNixCabalStarter
+name: MixLLMProxy
 version: '0.1.0.0'
-author: HaskellNixCabalStarter
-maintainer: HaskellNixCabalStarter
+author: MixLLMProxy
+maintainer: MixLLMProxy
 license: MIT
 dependencies:
 - base

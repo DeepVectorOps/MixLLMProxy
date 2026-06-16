@@ -7,4 +7,4 @@ let
     src = ./.;
   };
 in
-  pkgs.haskellPackages.callCabal2nix "HaskellNixCabalStarter" src {}
+  pkgs.haskellPackages.callCabal2nix "MixLLMProxy" src {}

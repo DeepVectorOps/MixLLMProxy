@@ -1,6 +1,8 @@
-# LLMHouse
+# MixLLMProxy
 
 LLM proxy with observability. Matches the `model` field in chat completion requests against configured aliases and proxies to the matching backend.
+
+Under 1000 lines of Haskell — pragmatic, no bloat.
 
 ## Quick start
 

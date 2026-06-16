@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           HaskellNixCabalStarter
+name:           MixLLMProxy
 version:        0.1.0.0
-author:         HaskellNixCabalStarter
-maintainer:     HaskellNixCabalStarter
+author:         MixLLMProxy
+maintainer:     MixLLMProxy
 license:        MIT
 build-type:     Simple
 
@@ -15,10 +15,12 @@ executable app
   main-is: Main.hs
   other-modules:
       AppEnv
+      Common
       DB
+      Route.Aliases
       Route.OpenAI
       Route.UI
-      Paths_HaskellNixCabalStarter
+      Paths_MixLLMProxy
   hs-source-dirs:
       src
   build-depends:
@@ -37,4 +39,7 @@ executable app
     , string-conversions
     , text
     , time
+    , wai
+    , wai-extra
+    , wai-middleware-static
   default-language: Haskell2010
