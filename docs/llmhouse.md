@@ -1,25 +1,29 @@
 # LLMHouse
 
-LLM proxy with observability. Accepts OpenAI-compatible chat completion requests, forwards them to a downstream LLM endpoint, and logs every request/response to PostgreSQL for inspection via a built-in web UI.
+LLM proxy with observability. Accepts OpenAI-compatible chat completion requests, matches the `model` field against configured aliases, forwards to the aliased downstream LLM endpoint, and logs every request/response to PostgreSQL for inspection via a built-in web UI.
 
 ## Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/openai/v1/chat/completions` | POST | OpenAI-compatible chat completions proxy |
+| `/api/openai/v1/chat/completions` | POST | Chat completions proxy — matches `model` field to alias |
 | `/ui/` | GET | Observatory: table of logged API requests |
+| `/ui/aliases` | GET | Manage aliases (CRUD) |
+| `/ui/aliases/info` | GET | Alias usage instructions |
 
 ## Architecture
 
 ```
-Client → /api/openai/v1/chat/completions → LLMHouse → downstream LLM endpoint
-                                                ↓
-                                           PostgreSQL (llm_requests)
-                                                ↑
-Client → /ui/ → Lucid HTML table ──────────────┘
+Client → /api/openai/v1/chat/completions → LLMHouse → alias endpoint (or 400)
+                                                 ↓
+                                            PostgreSQL (llm_requests, aliases)
+                                                 ↑
+Client → /ui/ → Lucid HTML ────────────────────┘
 ```
 
-The proxy performs raw HTTP forwarding. It reads the incoming request body, attaches the configured API key as an `Authorization: Bearer` header, sends it to the downstream endpoint, and returns the response verbatim. Every request is logged to the `llm_requests` table with request body, response body, status code, latency, and the model extracted from the request JSON.
+The proxy reads the `model` field from the incoming request body and looks up a matching alias by name. If found, the request is forwarded to the alias's endpoint with the alias's API key and the alias's configured model (the request body's model is overridden). If no alias matches, a 400 error is returned.
+
+Every request is logged to the `llm_requests` table with request body, response body, status code, latency, model, and alias name.
 
 ## Database
 
@@ -34,29 +38,38 @@ The proxy performs raw HTTP forwarding. It reads the incoming request body, atta
 | response_status | INT | HTTP status code from downstream |
 | response_body | TEXT | Raw response body |
 | latency_ms | DOUBLE PRECISION | Round-trip latency in milliseconds |
-| model | TEXT | Model extracted from request body |
+| model | TEXT | Model extracted/overridden |
 | prompt_tokens | INT | Prompt token count from response |
 | completion_tokens | INT | Completion token count from response |
 | total_tokens | INT | Total token count from response |
+| alias_name | TEXT | Alias name that matched |
 | created_at | TIMESTAMPTZ | Timestamp of the request |
+
+### aliases
+
+| Column | Type | Description |
+|---|---|---|
+| id | SERIAL | Auto-incrementing primary key |
+| name | TEXT | Unique alias name (matched against request `model` field) |
+| endpoint_url | TEXT | Downstream LLM endpoint |
+| api_key | TEXT | API key sent as Bearer token |
+| model | TEXT | Model forwarded to downstream |
+| created_at | TIMESTAMPTZ | Timestamp of creation |
 
 ## Environment Variables
 
 | Variable | Purpose |
 |---|---|
 | `DB_HOST` | PostgreSQL host |
-| `DB_NAME` | Database name (default: `llmhouse`) |
+| `DB_NAME` | Database name |
 | `DB_PASSWORD` | PostgreSQL password |
 | `DB_PORT` | PostgreSQL port |
 | `DB_USER` | PostgreSQL user |
-| `LLM_API_KEY` | Downstream LLM API key (sent as Bearer token) |
-| `LLM_API_URL` | Downstream LLM endpoint URL |
-| `LLM_MODEL` | Model to forward requests to |
 | `LLM_PORT` | Port to run the server on |
 
 ## Development
 
 - **Enter dev shell**: `nix-shell`
 - **Build**: `nix-build`
-- **Run**: `source etb-llmhouse-env.sh && nix-shell --run "cabal run"`
+- **Run**: `nix-shell --run "cabal run"`
 - **Check compilation**: `./lint.sh`

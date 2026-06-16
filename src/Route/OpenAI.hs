@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Route.OpenAI (openAIRoutes) where
 
@@ -15,7 +16,6 @@ import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (parseMaybe)
 import Data.String.Conversions (cs)
-import System.Environment (getEnv)
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (SomeException)
 
@@ -23,32 +23,30 @@ import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import AppEnv (AppEnv, withPool)
 import DB (insertRequest, getAliasByName, LlmAlias(..))
 
-handleProxy :: AppEnv -> Maybe LlmAlias -> ActionM ()
-handleProxy env mAlias = do
-  reqBody <- body
-  case mAlias of
-    Just alias -> do
-      let overriddenReqBody = case A.decode reqBody of
-            Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
-            _ -> reqBody
-      proxyAndLog env (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenReqBody
-    Nothing -> do
-      downstreamUrl <- liftIO $ getEnv "LLM_API_URL"
-      apiKey <- liftIO $ getEnv "LLM_API_KEY"
-      proxyAndLog env (cs downstreamUrl) (cs apiKey) Nothing reqBody
-
 openAIRoutes :: AppEnv -> ScottyM ()
 openAIRoutes env = do
-  post "/api/openai/v1/chat/completions/:alias" $ do
-    aliasName <- pathParam "alias"
-    mAlias <- liftIO $ withPool env $ \conn -> getAliasByName conn aliasName
+  post "/api/openai/v1/chat/completions" $ do
+    reqBody <- body
+    let reqModel = extractModel reqBody
+    mAlias <- case reqModel of
+      Just modelName -> liftIO $ withPool env $ \conn -> getAliasByName conn modelName
+      Nothing -> pure Nothing
     case mAlias of
+      Just alias -> do
+        let overriddenBody = case A.decode reqBody of
+              Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
+              _ -> reqBody
+        proxyAndLog env (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
       Nothing -> do
-        status status404
-        json $ A.object ["error" A..= ("alias not found: " <> aliasName)]
-      Just alias -> handleProxy env (Just alias)
+        status status400
+        json $ A.object ["error" A..= ("no alias found for model: " <> maybe "(missing)" id reqModel)]
 
-  post "/api/openai/v1/chat/completions" $ handleProxy env Nothing
+extractModel :: BL.ByteString -> Maybe T.Text
+extractModel body = case A.decode body of
+  Just (A.Object obj) -> KM.lookup "model" obj >>= \case
+    A.String t -> Just t
+    _ -> Nothing
+  _ -> Nothing
 
 proxyAndLog :: AppEnv -> T.Text -> T.Text -> Maybe T.Text -> BL.ByteString -> ActionM ()
 proxyAndLog env downstreamUrl apiKey aliasName reqBody = do
@@ -75,7 +73,7 @@ proxyAndLog env downstreamUrl apiKey aliasName reqBody = do
   let reqText = Just $ cs reqBody
   let respText = Just $ cs respBody
 
-  let endpoint = maybe "/api/openai/v1/chat/completions" (\a -> "/api/openai/v1/chat/completions/" <> a) aliasName
+  let endpoint = maybe "/api/openai/v1/chat/completions" (\a -> "/api/openai/v1/chat/completions (" <> a <> ")") aliasName
 
   liftIO (withPool env $ \conn ->
     insertRequest conn endpoint "POST" reqText

@@ -51,7 +51,8 @@ page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> Html ()
 page host requests pageNum totalPages stats = do
     div_ [class_ "header-row"] $ do
       h1_ "LLMHouse"
-      a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "ph-gear" >> " Aliases")
+      a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
+      a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let base = fromMaybe "localhost" (TL.toStrict <$> host)
           endpoint = T.concat ["http://", base, "/api/openai/v1/chat/completions"]
       code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
