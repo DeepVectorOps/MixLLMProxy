@@ -1,0 +1,12 @@
+dist/
+dist-newstyle/
+.ghc.environment.*
+
+# Secrets / environment files
+*.env
+*.env.sh
+*-env.sh
+etb-*.sh
+
+# Cabal
+cabal.project.local

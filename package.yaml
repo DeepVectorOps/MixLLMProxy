@@ -1,0 +1,26 @@
+name: HaskellNixCabalStarter
+version: '0.1.0.0'
+author: HaskellNixCabalStarter
+maintainer: HaskellNixCabalStarter
+license: MIT
+dependencies:
+- base
+- scotty
+- postgresql-simple
+- lucid
+- aeson
+- aeson-pretty
+- text
+- bytestring
+- http-client
+- http-client-tls
+- http-types
+- time
+- resource-pool
+- string-conversions
+- neat-interpolation
+
+executables:
+  app:
+    source-dirs: src
+    main: Main.hs

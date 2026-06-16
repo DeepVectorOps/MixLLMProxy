@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "llmhouse/deepseek-v4-flash",
+  "provider": {
+    "llmhouse": {
+      "api": "openai",
+      "options": {
+        "baseURL": "http://llmhouse.chris/api/openai/v1"
+      },
+      "models": {
+        "deepseek-v4-flash": {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash"
+        }
+      }
+    }
+  }
+}

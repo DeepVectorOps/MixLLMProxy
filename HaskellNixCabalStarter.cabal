@@ -1,0 +1,40 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.38.3.
+--
+-- see: https://github.com/sol/hpack
+
+name:           HaskellNixCabalStarter
+version:        0.1.0.0
+author:         HaskellNixCabalStarter
+maintainer:     HaskellNixCabalStarter
+license:        MIT
+build-type:     Simple
+
+executable app
+  main-is: Main.hs
+  other-modules:
+      AppEnv
+      DB
+      Route.OpenAI
+      Route.UI
+      Paths_HaskellNixCabalStarter
+  hs-source-dirs:
+      src
+  build-depends:
+      aeson
+    , aeson-pretty
+    , base
+    , bytestring
+    , http-client
+    , http-client-tls
+    , http-types
+    , lucid
+    , neat-interpolation
+    , postgresql-simple
+    , resource-pool
+    , scotty
+    , string-conversions
+    , text
+    , time
+  default-language: Haskell2010
