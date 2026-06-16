@@ -36,6 +36,10 @@ a { color: #58a6ff; text-decoration: none; }
 
 .detail td { white-space: normal; max-width: none; }
 .detail .label { color: #8b949e; font-weight: 600; width: 120px; white-space: nowrap; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 16px 0; }
+.detail-cell { display: flex; gap: 8px; align-items: baseline; }
+.detail-label { color: #8b949e; font-weight: 600; white-space: nowrap; }
+.detail-value { color: #c9d1d9; }
 .body { background: #161b22; padding: 16px; border-radius: 6px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
 .body * { overflow-wrap: anywhere; word-break: break-all; }
 .json-tree .json-formatter-row .json-formatter-string,

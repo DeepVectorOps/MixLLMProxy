@@ -66,6 +66,7 @@ page host requests pageNum totalPages stats = do
       statBox "ph-arrow-line-down" "Total Prompt Tokens" (maybeDash (lsTotalPromptTokens stats))
       statBox "ph-arrow-line-up" "Total Completion Tokens" (maybeDash (lsTotalCompletionTokens stats))
       statBox "ph-equals" "Total Tokens" (maybeDash (lsTotalTokens stats))
+    pagination pageNum totalPages
     table_ [class_ "requests"] $ do
       thead_ $ do
         tr_ $ do
@@ -102,26 +103,26 @@ requestRow r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrI
   td_ [class_ "req"] (toHtml (fromMaybe "-" (clip 80 (lrRequestBody r))))
   td_ [class_ "resp"] (toHtml (fromMaybe "-" (clip 80 (lrResponseBody r))))
 
-detailRow :: T.Text -> T.Text -> Html () -> Html ()
-detailRow iconName label value = tr_ $ do
-  td_ [class_ "label"] (icon iconName >> " " >> toHtml label)
-  td_ value
+detailCell :: T.Text -> T.Text -> Html () -> Html ()
+detailCell iconName label value = div_ [class_ "detail-cell"] $ do
+  span_ [class_ "detail-label"] (icon iconName >> " " >> toHtml label)
+  span_ [class_ "detail-value"] value
 
 detailPage :: LlmRequest -> Html ()
 detailPage r = do
     h1_ (toHtml ("Request #" <> showT (lrId r)))
-    table_ [class_ "detail"] $ do
-      detailRow "ph-fingerprint" "ID" (toHtml (showT (lrId r)))
-      detailRow "ph-clock" "Time" (toHtml (showT (lrCreatedAt r)))
-      detailRow "ph-arrow-down-up" "Method" (toHtml (lrMethod r))
-      detailRow "ph-link" "Endpoint" (toHtml (lrEndpoint r))
-      detailRow "ph-cpu" "Model" (toHtml (fromMaybe "-" (lrModel r)))
-      detailRow "ph-tag" "Alias" (toHtml (fromMaybe "-" (lrAliasName r)))
-      detailRow "ph-arrow-line-down" "Prompt tokens" (toHtml (maybeDash (lrPromptTokens r)))
-      detailRow "ph-arrow-line-up" "Completion tokens" (toHtml (maybeDash (lrCompletionTokens r)))
-      detailRow "ph-equals" "Total tokens" (toHtml (maybeDash (lrTotalTokens r)))
-      detailRow "ph-check-circle" "Status" (toHtml (maybeDash (lrResponseStatus r)))
-      detailRow "ph-timer" "Duration" (toHtml (maybe "-" fmtLatency (lrLatencyMs r)))
+    div_ [class_ "detail-grid"] $ do
+      detailCell "ph-fingerprint" "ID" (toHtml (showT (lrId r)))
+      detailCell "ph-clock" "Time" (toHtml (showT (lrCreatedAt r)))
+      detailCell "ph-arrow-down-up" "Method" (toHtml (lrMethod r))
+      detailCell "ph-link" "Endpoint" (toHtml (lrEndpoint r))
+      detailCell "ph-cpu" "Model" (toHtml (fromMaybe "-" (lrModel r)))
+      detailCell "ph-tag" "Alias" (toHtml (fromMaybe "-" (lrAliasName r)))
+      detailCell "ph-arrow-line-down" "Prompt tokens" (toHtml (maybeDash (lrPromptTokens r)))
+      detailCell "ph-arrow-line-up" "Completion tokens" (toHtml (maybeDash (lrCompletionTokens r)))
+      detailCell "ph-equals" "Total tokens" (toHtml (maybeDash (lrTotalTokens r)))
+      detailCell "ph-check-circle" "Status" (toHtml (maybeDash (lrResponseStatus r)))
+      detailCell "ph-timer" "Duration" (toHtml (maybe "-" fmtLatency (lrLatencyMs r)))
     script_ [src_ "https://cdn.jsdelivr.net/npm/json-formatter-js@2"] ("" :: T.Text)
     div_ [class_ "bodies"] $ do
       bodyPanel "Request Body" "req-body" (lrRequestBody r)
