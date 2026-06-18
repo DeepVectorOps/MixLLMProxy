@@ -1,29 +1,27 @@
-# LLMHouse
+# MixLLMProxy
 
-LLM proxy with observability. Accepts OpenAI-compatible chat completion requests, matches the `model` field against configured aliases, forwards to the aliased downstream LLM endpoint, and logs every request/response to PostgreSQL for inspection via a built-in web UI.
+OpenAI-compatible LLM proxy with observability. Matches the `model` field to configured aliases, forwards to downstream endpoints, and logs every request/response to PostgreSQL. Built-in web UI for log inspection, rate-limit monitoring, and alias management.
 
 ## Endpoints
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/openai/v1/chat/completions` | POST | Chat completions proxy — matches `model` field to alias |
-| `/ui/` | GET | Observatory: table of logged API requests |
-| `/ui/aliases` | GET | Manage aliases (CRUD) |
-| `/ui/aliases/info` | GET | Alias usage instructions |
+| `/api/openai/v1/chat/completions` | POST | Chat completions proxy — matches `model` to alias |
+| `/ui/` | GET | Request log with per-alias rate limits (rolling 24h) |
+| `/ui/aliases` | GET | Alias CRUD |
+| `/ui/aliases/info` | GET | Alias usage guide |
 
 ## Architecture
 
 ```
-Client → /api/openai/v1/chat/completions → LLMHouse → alias endpoint (or 400)
-                                                 ↓
-                                            PostgreSQL (llm_requests, aliases)
-                                                 ↑
-Client → /ui/ → Lucid HTML ────────────────────┘
+Client → /api/openai/v1/chat/completions → MixLLMProxy → alias endpoint (or 400)
+                                                    ↓
+                                               PostgreSQL
+                                                    ↑
+Client → /ui/ — Lucid HTML ───────────────────────┘
 ```
 
-The proxy reads the `model` field from the incoming request body and looks up a matching alias by name. If found, the request is forwarded to the alias's endpoint with the alias's API key and the alias's configured model (the request body's model is overridden). If no alias matches, a 400 error is returned.
-
-Every request is logged to the `llm_requests` table with request body, response body, status code, latency, model, and alias name.
+The `model` field in the request body is matched against alias names. On match, the request is forwarded with the alias's API key and configured model (overriding the request's model field). No match returns 400. All requests are logged with body, status, latency, tokens, and alias name.
 
 ## Database
 
@@ -31,45 +29,45 @@ Every request is logged to the `llm_requests` table with request body, response 
 
 | Column | Type | Description |
 |---|---|---|
-| id | SERIAL | Auto-incrementing primary key |
+| id | SERIAL | Primary key |
 | endpoint | TEXT | Requested API path |
 | method | TEXT | HTTP method |
 | request_body | TEXT | Raw request body |
-| response_status | INT | HTTP status code from downstream |
+| response_status | INT | Downstream HTTP status |
 | response_body | TEXT | Raw response body |
-| latency_ms | DOUBLE PRECISION | Round-trip latency in milliseconds |
-| model | TEXT | Model extracted/overridden |
-| prompt_tokens | INT | Prompt token count from response |
-| completion_tokens | INT | Completion token count from response |
-| total_tokens | INT | Total token count from response |
-| alias_name | TEXT | Alias name that matched |
-| created_at | TIMESTAMPTZ | Timestamp of the request |
+| latency_ms | DOUBLE PRECISION | Round-trip latency (ms) |
+| model | TEXT | Model sent downstream |
+| prompt_tokens | INT | Prompt tokens from response |
+| completion_tokens | INT | Completion tokens from response |
+| total_tokens | INT | Total tokens from response |
+| alias_name | TEXT | Matched alias |
+| created_at | TIMESTAMPTZ | Request timestamp |
 
 ### aliases
 
 | Column | Type | Description |
 |---|---|---|
-| id | SERIAL | Auto-incrementing primary key |
-| name | TEXT | Unique alias name (matched against request `model` field) |
+| id | SERIAL | Primary key |
+| name | TEXT | Unique alias name (matched against `model`) |
 | endpoint_url | TEXT | Downstream LLM endpoint |
-| api_key | TEXT | API key sent as Bearer token |
-| model | TEXT | Model forwarded to downstream |
-| created_at | TIMESTAMPTZ | Timestamp of creation |
+| api_key | TEXT | Bearer token sent downstream |
+| model | TEXT | Model sent downstream |
+| daily_token_limit | INT | Optional rolling 24h token limit (null = ∞) |
+| daily_request_limit | INT | Optional rolling 24h request limit (null = ∞) |
+| created_at | TIMESTAMPTZ | Creation timestamp |
 
-## Environment Variables
+## Environment
 
 | Variable | Purpose |
 |---|---|
-| `DB_HOST` | PostgreSQL host |
-| `DB_NAME` | Database name |
-| `DB_PASSWORD` | PostgreSQL password |
-| `DB_PORT` | PostgreSQL port |
-| `DB_USER` | PostgreSQL user |
-| `LLM_PORT` | Port to run the server on |
+| `DB_HOST` / `DB_NAME` / `DB_PASSWORD` / `DB_PORT` / `DB_USER` | PostgreSQL connection |
+| `LLM_PORT` | Server port (default 8015) |
 
 ## Development
 
-- **Enter dev shell**: `nix-shell`
-- **Build**: `nix-build`
-- **Run**: `nix-shell --run "cabal run"`
-- **Check compilation**: `./lint.sh`
+| Command | Purpose |
+|---|---|
+| `nix-shell` | Enter dev shell |
+| `nix-build` | Build |
+| `nix-shell --run "cabal run"` | Run |
+| `./lint.sh` | Check compilation |
