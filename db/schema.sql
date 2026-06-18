@@ -22,5 +22,10 @@ CREATE TABLE IF NOT EXISTS aliases (
     endpoint_url TEXT NOT NULL,
     api_key TEXT NOT NULL,
     model TEXT NOT NULL,
+    daily_token_limit INT,
+    daily_request_limit INT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE aliases ADD COLUMN IF NOT EXISTS daily_token_limit INT;
+ALTER TABLE aliases ADD COLUMN IF NOT EXISTS daily_request_limit INT;

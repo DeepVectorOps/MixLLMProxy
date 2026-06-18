@@ -6,14 +6,13 @@ module Route.UI (uiRoutes) where
 import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
-import DB (LlmRequest(..), LlmStats(..), getRecentRequests, getRequest, countRequests, getStats, truncateRequests, getAliasCounts)
+import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequests, getRequest, countRequests, truncateRequests, getAliasesWithUsage)
 import Common (icon, showT, maybeDash, basePage, queryParamDefault)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Data.Maybe (fromMaybe)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad (zipWithM_)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Encode.Pretty as AP
 
@@ -23,27 +22,41 @@ fmtLatency ms
   | ms >= 1000 = T.pack (show (fromIntegral (round (ms / 100) :: Int) / 10)) <> "s"
   | otherwise  = showT (round ms :: Int) <> "ms"
 
-statBox :: T.Text -> T.Text -> T.Text -> Html ()
-statBox iconName label value = div_ [class_ "stat-box"] $ do
-  div_ [class_ "stat-row"] $ do
-    span_ [class_ "stat-icon"] (icon iconName)
-    span_ [class_ "stat-label"] (toHtml label)
-    span_ [class_ "stat-value"] (toHtml value)
+rateLimitSection :: [AliasUsage] -> Html ()
+rateLimitSection aliasUsages =
+  if null aliasUsages
+    then ""
+    else div_ [class_ "rate-limits"] $ do
+      h2_ (icon "ph-speedometer" >> " Rate Limits (rolling 24h)")
+      div_ [class_ "rate-limit-grid"] $ mapM_ rateLimitCard aliasUsages
 
-totalBox :: T.Text -> [(T.Text, Int)] -> Html ()
-totalBox total aliasCounts = div_ [class_ "stat-box"] $ do
-  span_ [class_ "stat-icon"] (icon "ph-database")
-  div_ [class_ "stat-body"] $ do
-    div_ [class_ "stat-row"] $ do
-      span_ [class_ "stat-label"] "Total Requests"
-      span_ [class_ "stat-value"] (toHtml total)
-    div_ [class_ "alias-breakdown"] $
-      zipWithM_ (\(alias, count) color ->
-        span_ [class_ "alias-chip", style_ ("color:" <> color <> ";border-color:" <> color)] (toHtml (alias <> ": " <> showT count))
-      ) aliasCounts chipColors
+rateLimitCard :: AliasUsage -> Html ()
+rateLimitCard u = do
+  let a = auAlias u
+      reqCount = auRequestCount u
+      tokCount = auTokenCount u
+  div_ [class_ "rate-limit-card"] $ do
+    div_ [class_ "rate-limit-name"] (code_ (toHtml (laName a)))
+    limitBar "Requests" reqCount (laDailyRequestLimit a)
+    limitBar "Tokens" tokCount (laDailyTokenLimit a)
 
-chipColors :: [T.Text]
-chipColors = ["#58a6ff", "#3fb950", "#d29922", "#f85149", "#a371f7", "#79c0ff", "#56d364", "#e3b341"]
+limitBar :: T.Text -> Int -> Maybe Int -> Html ()
+limitBar label count mlim = case mlim of
+  Just lim | lim > 0 -> do
+    let pct = min 100 (count * 100 `div` lim)
+        pctTxt = showT pct <> "%"
+        barClass = if pct >= 100 then "bar-full" else if pct >= 80 then "bar-warn" else ""
+    div_ [class_ "limit-bar"] $ do
+      div_ [class_ "limit-bar-label"] $ do
+        span_ (toHtml label)
+        span_ [class_ "limit-bar-nums"] (toHtml (showT count <> " / " <> showT lim <> "  (" <> pctTxt <> ")"))
+      div_ [class_ "limit-bar-track"] $
+        div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT pct <> "%")] ""
+  _ -> do
+    div_ [class_ "limit-bar"] $ do
+      div_ [class_ "limit-bar-label"] $ do
+        span_ (toHtml label)
+        span_ [class_ "limit-bar-nums"] (toHtml (showT count <> " / ∞"))
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
@@ -54,10 +67,9 @@ uiRoutes env = do
     requests <- liftIO $ withPool env $ \conn -> getRecentRequests conn perPage offset
     total <- liftIO $ withPool env $ \conn -> countRequests conn
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
-    stats <- liftIO $ withPool env $ \conn -> getStats conn
-    aliasCounts <- liftIO $ withPool env $ \conn -> getAliasCounts conn
+    aliasUsages <- liftIO $ withPool env $ \conn -> getAliasesWithUsage conn
     host <- header "Host"
-    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages stats aliasCounts
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages aliasUsages
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
@@ -68,8 +80,8 @@ uiRoutes env = do
     liftIO $ withPool env $ \conn -> truncateRequests conn
     redirect "/ui/"
 
-page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> LlmStats -> [(T.Text, Int)] -> Html ()
-page host requests pageNum totalPages stats aliasCounts = do
+page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> [AliasUsage] -> Html ()
+page host requests pageNum totalPages aliasUsages = do
     div_ [class_ "header-row"] $ do
       h1_ "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
@@ -79,11 +91,7 @@ page host requests pageNum totalPages stats aliasCounts = do
       code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
       form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
-    div_ [class_ "stats"] $ do
-      totalBox (showT (lsTotalRequests stats)) aliasCounts
-      statBox "ph-arrow-line-down" "Total Prompt Tokens" (maybeDash (lsTotalPromptTokens stats))
-      statBox "ph-arrow-line-up" "Total Completion Tokens" (maybeDash (lsTotalCompletionTokens stats))
-      statBox "ph-equals" "Total Tokens" (maybeDash (lsTotalTokens stats))
+    rateLimitSection aliasUsages
     pagination pageNum totalPages
     table_ [class_ "requests"] $ do
       thead_ $ do

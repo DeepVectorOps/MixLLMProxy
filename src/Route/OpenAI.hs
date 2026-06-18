@@ -20,8 +20,10 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Exception (SomeException)
 
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Database.PostgreSQL.Simple (Connection)
 import AppEnv (AppEnv, withPool)
-import DB (insertRequest, getAliasByName, LlmAlias(..))
+import DB (insertRequest, getAliasByName, getAliasUsage24h, LlmAlias(..))
+import Common (showT)
 
 openAIRoutes :: AppEnv -> ScottyM ()
 openAIRoutes env = do
@@ -33,13 +35,34 @@ openAIRoutes env = do
       Nothing -> pure Nothing
     case mAlias of
       Just alias -> do
-        let overriddenBody = case A.decode reqBody of
-              Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
-              _ -> reqBody
-        proxyAndLog env (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
+        mBlocked <- liftIO $ withPool env $ \conn -> checkRateLimit conn alias
+        case mBlocked of
+          Just errMsg -> do
+            status status429
+            setHeader "Content-Type" "application/json"
+            raw $ A.encode $ A.object
+              [ "error" A..= errMsg
+              , "type" A..= ("rate_limit_exceeded" :: T.Text)
+              ]
+          Nothing -> do
+            let overriddenBody = case A.decode reqBody of
+                  Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
+                  _ -> reqBody
+            proxyAndLog env (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
       Nothing -> do
         status status400
         json $ A.object ["error" A..= ("no alias found for model: " <> maybe "(missing)" id reqModel)]
+
+checkRateLimit :: Connection -> LlmAlias -> IO (Maybe T.Text)
+checkRateLimit conn alias = do
+  (reqCount, tokenCount) <- getAliasUsage24h conn (laName alias)
+  pure $ case (laDailyRequestLimit alias, laDailyTokenLimit alias) of
+    (Just reqLimit, _) | reqCount >= reqLimit ->
+      Just $ "Daily request limit reached for alias '" <> laName alias <> "': " <> showT reqCount <> "/" <> showT reqLimit <> " requests in the last 24h"
+    (_, Just tokLimit) | tokenCount >= tokLimit ->
+      Just $ "Daily token limit reached for alias '" <> laName alias <> "': " <> showT tokenCount <> "/" <> showT tokLimit <> " tokens in the last 24h"
+    _ -> Nothing
+
 
 extractModel :: BL.ByteString -> Maybe T.Text
 extractModel body = case A.decode body of

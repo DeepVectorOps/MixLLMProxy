@@ -10,16 +10,17 @@ module DB
   , countRequests
   , truncateRequests
   , LlmRequest(..)
-  , LlmStats(..)
-  , getStats
-  , getAliasCounts
+
   , LlmAlias(..)
   , getAliases
+  , getAliasesWithUsage
+  , AliasUsage(..)
   , getAliasByName
   , getAliasById
   , insertAlias
   , updateAlias
   , deleteAlias
+  , getAliasUsage24h
   ) where
 
 import Database.PostgreSQL.Simple
@@ -54,16 +55,6 @@ data LlmRequest = LlmRequest
 instance FromRow LlmRequest where
   fromRow = LlmRequest <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
 
-data LlmStats = LlmStats
-  { lsTotalRequests :: Int
-  , lsTotalPromptTokens :: Maybe Int
-  , lsTotalCompletionTokens :: Maybe Int
-  , lsTotalTokens :: Maybe Int
-  } deriving (Show, Generic)
-
-instance FromRow LlmStats where
-  fromRow = LlmStats <$> field <*> field <*> field <*> field
-
 data LlmAlias = LlmAlias
   { laId :: Int
   , laName :: Text
@@ -71,10 +62,21 @@ data LlmAlias = LlmAlias
   , laApiKey :: Text
   , laModel :: Text
   , laCreatedAt :: UTCTime
+  , laDailyTokenLimit :: Maybe Int
+  , laDailyRequestLimit :: Maybe Int
   } deriving (Show, Generic)
 
 instance FromRow LlmAlias where
-  fromRow = LlmAlias <$> field <*> field <*> field <*> field <*> field <*> field
+  fromRow = LlmAlias <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
+
+data AliasUsage = AliasUsage
+  { auAlias :: LlmAlias
+  , auRequestCount :: Int
+  , auTokenCount :: Int
+  } deriving (Show, Generic)
+
+instance FromRow AliasUsage where
+  fromRow = AliasUsage <$> fromRow <*> field <*> field
 
 requestColumns :: Query
 requestColumns = fromString $ cs [text|
@@ -127,18 +129,9 @@ countRequests conn = do
   [Only c] <- query_ conn "SELECT COUNT(*) FROM llm_requests"
   pure c
 
-getStats :: Connection -> IO LlmStats
-getStats conn = do
-  [s] <- query_ conn "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0), COALESCE(SUM(total_tokens),0) FROM llm_requests"
-  pure s
-
-getAliasCounts :: Connection -> IO [(Text, Int)]
-getAliasCounts conn = do
-  query_ conn "SELECT COALESCE(alias_name, '(direct)'), COUNT(*) FROM llm_requests GROUP BY alias_name ORDER BY COUNT(*) DESC"
-
 aliasColumns :: Query
 aliasColumns = fromString $ cs [text|
-  id, name, endpoint_url, api_key, model, created_at
+  id, name, endpoint_url, api_key, model, created_at, daily_token_limit, daily_request_limit
 |]
 
 aliasSelect :: Query
@@ -161,22 +154,48 @@ getAliasById conn aid = do
     [a] -> Just a
     _   -> Nothing
 
-insertAlias :: Connection -> Text -> Text -> Text -> Text -> IO ()
-insertAlias conn name url key model =
+insertAlias :: Connection -> Text -> Text -> Text -> Text -> Maybe Int -> Maybe Int -> IO ()
+insertAlias conn name url key model tokenLimit reqLimit =
   void $ execute conn (fromString $ cs [text|
-    INSERT INTO aliases (name, endpoint_url, api_key, model)
-    VALUES (?, ?, ?, ?)
-  |]) (name, url, key, model)
+    INSERT INTO aliases (name, endpoint_url, api_key, model, daily_token_limit, daily_request_limit)
+    VALUES (?, ?, ?, ?, ?, ?)
+  |]) (name, url, key, model, tokenLimit, reqLimit)
 
-updateAlias :: Connection -> Int -> Text -> Text -> Text -> Text -> IO ()
-updateAlias conn aid name url key model =
+updateAlias :: Connection -> Int -> Text -> Text -> Text -> Text -> Maybe Int -> Maybe Int -> IO ()
+updateAlias conn aid name url key model tokenLimit reqLimit =
   void $ execute conn (fromString $ cs [text|
-    UPDATE aliases SET name = ?, endpoint_url = ?, api_key = ?, model = ? WHERE id = ?
-  |]) (name, url, key, model, aid)
+    UPDATE aliases SET name = ?, endpoint_url = ?, api_key = ?, model = ?, daily_token_limit = ?, daily_request_limit = ? WHERE id = ?
+  |]) (name, url, key, model, tokenLimit, reqLimit, aid)
 
 deleteAlias :: Connection -> Int -> IO ()
 deleteAlias conn aid =
   void $ execute conn "DELETE FROM aliases WHERE id = ?" (Only aid)
+
+getAliasUsage24h :: Connection -> Text -> IO (Int, Int)
+getAliasUsage24h conn aliasName = do
+  rows <- query conn (fromString $ cs [text|
+    SELECT COUNT(*), COALESCE(SUM(total_tokens), 0)
+    FROM llm_requests
+    WHERE alias_name = ? AND created_at >= NOW() - INTERVAL '24 hours'
+  |]) (Only aliasName) :: IO [(Int, Int)]
+  pure $ case rows of
+    [(reqCount, tokenCount)] -> (reqCount, tokenCount)
+    _ -> (0, 0)
+
+getAliasesWithUsage :: Connection -> IO [AliasUsage]
+getAliasesWithUsage conn =
+  query_ conn (fromString $ cs [text|
+    SELECT a.id, a.name, a.endpoint_url, a.api_key, a.model, a.created_at, a.daily_token_limit, a.daily_request_limit,
+           COALESCE(r.req_count, 0), COALESCE(r.token_count, 0)
+    FROM aliases a
+    LEFT JOIN (
+      SELECT alias_name, COUNT(*) AS req_count, COALESCE(SUM(total_tokens), 0) AS token_count
+      FROM llm_requests
+      WHERE created_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY alias_name
+    ) r ON r.alias_name = a.name
+    ORDER BY a.created_at DESC
+  |])
 
 truncateRequests :: Connection -> IO ()
 truncateRequests conn =
