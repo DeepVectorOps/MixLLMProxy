@@ -5,25 +5,48 @@ maintainer: MixLLMProxy
 license: MIT
 dependencies:
 - base
-- scotty
-- postgresql-simple
-- lucid
-- aeson
-- aeson-pretty
-- text
-- bytestring
-- http-client
-- http-client-tls
-- http-types
-- time
-- resource-pool
-- string-conversions
-- neat-interpolation
-- wai
-- wai-middleware-static
-- wai-extra
+
+library:
+  source-dirs: src
+  dependencies:
+    - base
+    - scotty
+    - postgresql-simple
+    - lucid
+    - aeson
+    - aeson-pretty
+    - text
+    - bytestring
+    - http-client
+    - http-client-tls
+    - http-types
+    - time
+    - resource-pool
+    - string-conversions
+    - neat-interpolation
+    - wai
+    - wai-middleware-static
+    - wai-extra
 
 executables:
   app:
     source-dirs: src
     main: Main.hs
+    dependencies:
+      - MixLLMProxy
+
+tests:
+  spec:
+    source-dirs: test
+    main: Spec.hs
+    dependencies:
+      - base
+      - MixLLMProxy
+      - http-client
+      - text
+      - bytestring
+      - async
+      - warp
+      - wai
+      - http-types
+      - network

@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
 
-module Route.OpenAI (openAIRoutes) where
+module Route.OpenAI (openAIRoutes, buildRequest) where
 
 import Web.Scotty
 import Network.HTTP.Client
@@ -71,21 +71,25 @@ extractModel body = case A.decode body of
     _ -> Nothing
   _ -> Nothing
 
+buildRequest :: T.Text -> T.Text -> BL.ByteString -> IO Request
+buildRequest downstreamUrl apiKey reqBody = do
+  initReq <- parseRequest (cs downstreamUrl)
+  pure $ initReq
+    { method = "POST"
+    , requestBody = RequestBodyLBS reqBody
+    , requestHeaders =
+        [ ("Content-Type", "application/json")
+        , ("Authorization", TE.encodeUtf8 ("Bearer " <> cs apiKey))
+        ]
+    , responseTimeout = responseTimeoutNone
+    }
+
 proxyAndLog :: AppEnv -> T.Text -> T.Text -> Maybe T.Text -> BL.ByteString -> ActionM ()
 proxyAndLog env downstreamUrl apiKey aliasName reqBody = do
   startTime <- liftIO getCurrentTime
   (respStatus, respBody) <- liftIO $ do
     manager <- newManager tlsManagerSettings
-    initReq <- parseRequest (cs downstreamUrl)
-    let req = initReq
-          { method = "POST"
-          , requestBody = RequestBodyLBS reqBody
-          , requestHeaders =
-              [ ("Content-Type", "application/json")
-              , ("Authorization", TE.encodeUtf8 ("Bearer " <> cs apiKey))
-              ]
-          , responseTimeout = responseTimeoutNone
-          }
+    req <- buildRequest downstreamUrl apiKey reqBody
     resp <- httpLbs req manager
     pure (responseStatus resp, responseBody resp)
   endTime <- liftIO getCurrentTime
