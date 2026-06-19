@@ -2,6 +2,8 @@
 
 Single entry point for all your LLM providers. One endpoint, many backends — switch models without changing your integration.
 
+A lightweight, self-hosted alternative to [LiteLLM](https://github.com/BerriAI/litellm).
+
 ## Why
 
 Teams using multiple LLM APIs end up juggling keys, endpoints, and model names across every service. MixLLMProxy consolidates them behind one URL. You call one proxy, it routes to the right provider based on the model name you pick.
