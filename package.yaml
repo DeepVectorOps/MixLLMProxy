@@ -34,6 +34,24 @@ executables:
     main: Main.hs
     dependencies:
       - MixLLMProxy
+      - base
+      - scotty
+      - postgresql-simple
+      - lucid
+      - aeson
+      - aeson-pretty
+      - text
+      - bytestring
+      - http-client
+      - http-client-tls
+      - http-types
+      - time
+      - resource-pool
+      - string-conversions
+      - neat-interpolation
+      - wai
+      - wai-middleware-static
+      - wai-extra
 
 tests:
   spec:
