@@ -5,6 +5,8 @@
 module DB
   ( connectDB
   , insertRequest
+  , insertPendingRequest
+  , updateRequest
   , getRecentRequests
   , getRequest
   , countRequests
@@ -113,6 +115,23 @@ insertRequest conn endpoint method reqBody respStatus respBody latencyMs model p
     INSERT INTO llm_requests (endpoint, method, request_body, response_status, response_body, latency_ms, model, prompt_tokens, completion_tokens, total_tokens, alias_name)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   |]) (endpoint, method, reqBody, respStatus, respBody, latencyMs, model, promptT, complT, totalT, aliasName)
+
+insertPendingRequest :: Connection -> Text -> Text -> Maybe Text -> Maybe Text -> Maybe Text -> IO Int
+insertPendingRequest conn endpoint method reqBody model aliasName = do
+  [Only rid] <- query conn (fromString $ cs [text|
+    INSERT INTO llm_requests (endpoint, method, request_body, model, alias_name)
+    VALUES (?, ?, ?, ?, ?)
+    RETURNING id
+  |]) (endpoint, method, reqBody, model, aliasName)
+  pure rid
+
+updateRequest :: Connection -> Int -> Maybe Int -> Maybe Text -> Double -> Maybe Text -> Maybe Int -> Maybe Int -> Maybe Int -> IO ()
+updateRequest conn rid respStatus respBody latencyMs model promptT complT totalT =
+  void $ execute conn (fromString $ cs [text|
+    UPDATE llm_requests
+    SET response_status = ?, response_body = ?, latency_ms = ?, model = COALESCE(?, model), prompt_tokens = ?, completion_tokens = ?, total_tokens = ?
+    WHERE id = ?
+  |]) (respStatus, respBody, latencyMs, model, promptT, complT, totalT, rid)
 
 getRecentRequests :: Connection -> Int -> Int -> IO [LlmRequest]
 getRecentRequests conn limit offset = query conn ("SELECT " <> requestColumns <> " FROM llm_requests ORDER BY created_at DESC LIMIT ? OFFSET ?") (limit, offset)

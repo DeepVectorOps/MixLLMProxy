@@ -22,7 +22,7 @@ import Control.Exception (SomeException)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Database.PostgreSQL.Simple (Connection)
 import AppEnv (AppEnv, withPool)
-import DB (insertRequest, getAliasByName, getAliasUsage24h, LlmAlias(..))
+import DB (insertPendingRequest, updateRequest, getAliasByName, getAliasUsage24h, LlmAlias(..))
 import Common (showT)
 
 openAIRoutes :: AppEnv -> ScottyM ()
@@ -48,7 +48,11 @@ openAIRoutes env = do
             let overriddenBody = case A.decode reqBody of
                   Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
                   _ -> reqBody
-            proxyAndLog env (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
+            let endpoint = "/api/openai/v1/chat/completions (" <> laName alias <> ")"
+            let reqText = Just $ cs overriddenBody
+            rid <- liftIO $ withPool env $ \conn ->
+              insertPendingRequest conn endpoint "POST" reqText (Just (laModel alias)) (Just (laName alias))
+            proxyAndLog env rid (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
       Nothing -> do
         status status400
         json $ A.object ["error" A..= ("no alias found for model: " <> maybe "(missing)" id reqModel)]
@@ -84,8 +88,8 @@ buildRequest downstreamUrl apiKey reqBody = do
     , responseTimeout = responseTimeoutNone
     }
 
-proxyAndLog :: AppEnv -> T.Text -> T.Text -> Maybe T.Text -> BL.ByteString -> ActionM ()
-proxyAndLog env downstreamUrl apiKey aliasName reqBody = do
+proxyAndLog :: AppEnv -> Int -> T.Text -> T.Text -> Maybe T.Text -> BL.ByteString -> ActionM ()
+proxyAndLog env rid downstreamUrl apiKey aliasName reqBody = do
   startTime <- liftIO getCurrentTime
   (respStatus, respBody) <- liftIO $ do
     manager <- newManager tlsManagerSettings
@@ -97,14 +101,10 @@ proxyAndLog env downstreamUrl apiKey aliasName reqBody = do
   let latency = realToFrac (diffUTCTime endTime startTime) * 1000 :: Double
   let (model, (promptT, complT, totalT)) = extractPayload respBody
   let code = statusCode respStatus
-  let reqText = Just $ cs reqBody
   let respText = Just $ cs respBody
 
-  let endpoint = maybe "/api/openai/v1/chat/completions" (\a -> "/api/openai/v1/chat/completions (" <> a <> ")") aliasName
-
   liftIO (withPool env $ \conn ->
-    insertRequest conn endpoint "POST" reqText
-      (Just code) respText latency model promptT complT totalT aliasName) `catch` (\(_ :: SomeException) -> pure ())
+    updateRequest conn rid (Just code) respText latency model promptT complT totalT) `catch` (\(_ :: SomeException) -> pure ())
 
   status respStatus
   setHeader "Content-Type" "application/json"

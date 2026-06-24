@@ -43,15 +43,16 @@ rateLimitCard u = do
 limitBar :: T.Text -> Int -> Maybe Int -> Html ()
 limitBar label count mlim = case mlim of
   Just lim | lim > 0 -> do
-    let pct = min 100 (count * 100 `div` lim)
+    let pct = count * 100 `div` lim
         pctTxt = showT pct <> "%"
+        widthPct = min 100 pct
         barClass = if pct >= 100 then "bar-full" else if pct >= 80 then "bar-warn" else ""
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ (toHtml label)
         span_ [class_ "limit-bar-nums"] (toHtml (showT count <> " / " <> showT lim <> "  (" <> pctTxt <> ")"))
       div_ [class_ "limit-bar-track"] $
-        div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT pct <> "%")] ""
+        div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT widthPct <> "%")] ""
   _ -> do
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
