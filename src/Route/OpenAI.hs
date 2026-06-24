@@ -17,14 +17,19 @@ import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (parseMaybe)
 import Data.String.Conversions (cs)
 import Control.Monad.IO.Class (liftIO)
-import Control.Exception (SomeException)
+import Control.Exception (SomeException, finally)
+import qualified Control.Exception as E
+import Control.Monad (forM_, unless)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as B
+import qualified Data.CaseInsensitive as CI
 
 import Data.Time.Clock (getCurrentTime, diffUTCTime, addUTCTime)
 import Database.PostgreSQL.Simple (Connection)
 import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
 import DB (insertPendingRequest, updateRequest, getAliasByName, getAliasUsage24h, LlmAlias(..))
 import Common (showT)
-import Data.IORef (readIORef, atomicModifyIORef')
+import Data.IORef (readIORef, atomicModifyIORef', newIORef)
 import Network.HTTP.Types.Status (status429, status503)
 
 checkGlobalRateLimit :: AppEnv -> IO (Maybe T.Text)
@@ -124,24 +129,45 @@ buildRequest downstreamUrl apiKey reqBody = do
 proxyAndLog :: AppEnv -> Int -> T.Text -> T.Text -> Maybe T.Text -> BL.ByteString -> ActionM ()
 proxyAndLog env rid downstreamUrl apiKey aliasName reqBody = do
   startTime <- liftIO getCurrentTime
-  (respStatus, respBody) <- liftIO $ do
+  (resp, manager) <- liftIO $ do
     manager <- newManager tlsManagerSettings
     req <- buildRequest downstreamUrl apiKey reqBody
-    resp <- httpLbs req manager
-    pure (responseStatus resp, responseBody resp)
-  endTime <- liftIO getCurrentTime
+    resp <- responseOpen req manager
+    pure (resp, manager)
 
-  let latency = realToFrac (diffUTCTime endTime startTime) * 1000 :: Double
-  let (model, (promptT, complT, totalT)) = extractPayload respBody
-  let code = statusCode respStatus
-  let respText = Just $ cs respBody
-
-  liftIO (withPool env $ \conn ->
-    updateRequest conn rid (Just code) respText latency model promptT complT totalT) `catch` (\(_ :: SomeException) -> pure ())
+  let respStatus = responseStatus resp
 
   status respStatus
-  setHeader "Content-Type" "application/json"
-  raw respBody
+  forM_ (responseHeaders resp) $ \(name, val) -> do
+    unless (name `elem` ["Content-Length", "Transfer-Encoding", "Content-Encoding"]) $
+      setHeader (cs (CI.original name)) (cs val)
+
+  chunksVar <- liftIO $ newIORef []
+
+  let streamAction write flush = do
+        let loop = do
+              chunk <- responseBody resp
+              if BS.null chunk
+                then pure ()
+                else do
+                  atomicModifyIORef' chunksVar (\chunks -> (chunk : chunks, ()))
+                  write (B.byteString chunk)
+                  flush
+                  loop
+        loop `finally` do
+          responseClose resp
+          endTime <- getCurrentTime
+          let latency = realToFrac (diffUTCTime endTime startTime) * 1000 :: Double
+          chunks <- readIORef chunksVar
+          let respBody = BL.fromChunks (reverse chunks)
+          let (model, (promptT, complT, totalT)) = extractPayload respBody
+          let code = statusCode respStatus
+          let respText = Just $ cs respBody
+          withPool env (\conn ->
+            updateRequest conn rid (Just code) respText latency model promptT complT totalT)
+              `E.catch` (\(_ :: SomeException) -> pure ())
+
+  stream streamAction
 
 extractPayload :: BL.ByteString -> (Maybe T.Text, (Maybe Int, Maybe Int, Maybe Int))
 extractPayload body = case A.decode cleanBody of

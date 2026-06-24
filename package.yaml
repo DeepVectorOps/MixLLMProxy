@@ -17,6 +17,7 @@ library:
     - aeson-pretty
     - text
     - bytestring
+    - case-insensitive
     - http-client
     - http-client-tls
     - http-types
@@ -42,6 +43,7 @@ executables:
       - aeson-pretty
       - text
       - bytestring
+      - case-insensitive
       - http-client
       - http-client-tls
       - http-types
