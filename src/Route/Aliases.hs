@@ -30,7 +30,8 @@ duplicateName name existing = fromMaybe (name <> "-1") $ listToMaybe $ dropWhile
 renderAliases :: AppEnv -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> ActionM ()
 renderAliases env editId name url key model tokenLimitFilled reqLimitFilled errMsg = do
   aliases <- liftIO $ withPool env $ \conn -> getAliases conn
-  html $ renderText $ aliasesPage aliases editId name url key model tokenLimitFilled reqLimitFilled errMsg
+  host <- fromMaybe "localhost" . fmap TL.toStrict <$> header "Host"
+  html $ renderText $ aliasesPage host aliases editId name url key model tokenLimitFilled reqLimitFilled errMsg
 
 validateAliasForm :: T.Text -> T.Text -> T.Text -> T.Text -> Bool
 validateAliasForm name url key model = T.null name || T.null url || T.null key || T.null model
@@ -92,11 +93,15 @@ aliasesRoutes env = do
     liftIO $ withPool env $ \conn -> deleteAlias conn aid
     redirect "/ui/aliases"
 
-aliasesPage :: [LlmAlias] -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> Html ()
-aliasesPage aliases editId nameFilled urlFilled keyFilled modelFilled tokenLimitFilled reqLimitFilled errorMsg = basePage "MixLLMProxy — Aliases" $ do
+aliasesPage :: T.Text -> [LlmAlias] -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> Html ()
+aliasesPage host aliases editId nameFilled urlFilled keyFilled modelFilled tokenLimitFilled reqLimitFilled errorMsg = basePage "MixLLMProxy — Aliases" $ do
   div_ [class_ "container"] $ do
     div_ [class_ "header-row"] $ do
-      h1_ "Aliases"
+      h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
+      a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
+      a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
+      let endpoint = T.concat ["http://", host, "/api/openai/v1/chat/completions"]
+      code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
     p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
 
     div_ [class_ "form-section"] $ do

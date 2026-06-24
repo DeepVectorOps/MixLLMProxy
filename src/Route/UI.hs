@@ -38,7 +38,9 @@ rateLimitCard u = do
       reqCount = auRequestCount u
       tokCount = auTokenCount u
   div_ [class_ "rate-limit-card"] $ do
-    div_ [class_ "rate-limit-name"] (aliasBadge (laName a))
+    div_ [class_ "rate-limit-name"] $ do
+      aliasBadge (laName a)
+      a_ [href_ ("/ui/aliases/" <> showT (laId a) <> "/edit"), class_ "card-edit-btn", title_ "Edit alias"] (icon "pencil")
     limitBar "Requests" reqCount (laDailyRequestLimit a)
     limitBar "Tokens" tokCount (laDailyTokenLimit a)
 

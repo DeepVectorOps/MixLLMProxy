@@ -68,9 +68,7 @@ aliasColor name =
   let colors =
         [ "hsl(210, 85%, 45%)" -- Blue
         , "hsl(120, 70%, 35%)" -- Green
-        , "hsl(25,  85%, 45%)" -- Orange
         , "hsl(280, 75%, 45%)" -- Purple
-        , "hsl(350, 75%, 45%)" -- Red
         , "hsl(45,  80%, 40%)" -- Yellow
         , "hsl(320, 80%, 45%)" -- Pink
         , "hsl(180, 80%, 35%)" -- Teal
