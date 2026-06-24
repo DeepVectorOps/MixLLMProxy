@@ -292,7 +292,7 @@ getAliasesWithUsage conn =
       WHERE created_at >= NOW() - INTERVAL '24 hours'
       GROUP BY alias_name
     ) r ON r.alias_name = a.name
-    ORDER BY a.created_at DESC
+    ORDER BY COALESCE(r.req_count, 0) DESC, a.created_at DESC
   |])
 
 truncateRequests :: Connection -> IO ()
