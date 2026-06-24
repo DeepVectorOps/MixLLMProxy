@@ -4,6 +4,7 @@ body {
   background: #0d1117;
   color: #c9d1d9;
 }
+.container { max-width: 960px; margin: 0 auto; }
 .header-row { display: flex; align-items: center; gap: 16px; }
 h1 { color: #58a6ff; margin: 0; }
 .subtitle { color: #8b949e; margin-top: 4px; }
@@ -54,6 +55,10 @@ h2 { color: #8b949e; margin-top: 24px; font-size: 14px; }
 .form-grid label { color: #8b949e; font-size: 13px; }
 .form-grid input { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; }
 .form-grid input:focus { border-color: #58a6ff; outline: none; }
+.key-wrapper { display: flex; gap: 6px; align-items: center; }
+.key-wrapper input { flex: 1; }
+.btn-toggle-key { background: #21262d; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px; line-height: 1; }
+.btn-toggle-key:hover { color: #c9d1d9; border-color: #58a6ff; }
 .form-actions { grid-column: 1 / -1; margin-top: 8px; display: flex; gap: 8px; }
 .btn-save { background: #238636; color: white; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; }
 .btn-save:hover { background: #2ea043; }
@@ -61,6 +66,8 @@ h2 { color: #8b949e; margin-top: 24px; font-size: 14px; }
 .btn-danger { background: #da3633; color: white; border: none; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
 .btn-danger:hover { background: #f85149; }
 .btn-edit { background: #21262d; color: #58a6ff; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn-duplicate { background: #21262d; color: #d2a8ff; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.btn-duplicate:hover { border-color: #d2a8ff; }
 .error { background: #490202; color: #f85149; border: 1px solid #da3633; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }
 .empty { color: #484f58; }
 .actions { display: flex; gap: 8px; }

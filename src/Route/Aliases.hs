@@ -10,7 +10,7 @@ import DB (LlmAlias(..), getAliases, getAliasById, insertAlias, updateAlias, del
 import Common (icon, showT, basePage)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
-import Data.Maybe (fromMaybe, isJust, maybe, catMaybes)
+import Data.Maybe (fromMaybe, isJust, maybe, catMaybes, listToMaybe)
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (SomeException)
 import Text.Read (readMaybe)
@@ -22,6 +22,10 @@ optionalIntFormParam key = do
 
 limitValueAttr :: Maybe Int -> T.Text
 limitValueAttr = maybe "" showT
+
+duplicateName :: T.Text -> [T.Text] -> T.Text
+duplicateName name existing = fromMaybe (name <> "-1") $ listToMaybe $ dropWhile (`elem` existing)
+  [ name <> "-" <> T.pack (show n) | n <- [1..] ]
 
 renderAliases :: AppEnv -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> ActionM ()
 renderAliases env editId name url key model tokenLimitFilled reqLimitFilled errMsg = do
@@ -72,6 +76,17 @@ aliasesRoutes env = do
         liftIO $ withPool env $ \conn -> updateAlias conn aid name url key model tokenLimit reqLimit
         redirect "/ui/aliases"
 
+  post "/ui/aliases/:id/duplicate" $ do
+    (aid :: Int) <- pathParam "id"
+    malias <- liftIO $ withPool env $ \conn -> getAliasById conn aid
+    case malias of
+      Just a -> do
+        existingNames <- liftIO $ withPool env $ \conn -> map laName <$> getAliases conn
+        let newName = duplicateName (laName a) existingNames
+        liftIO $ withPool env $ \conn -> insertAlias conn newName (laEndpointUrl a) (laApiKey a) (laModel a) (laDailyTokenLimit a) (laDailyRequestLimit a)
+        redirect "/ui/aliases"
+      Nothing -> redirect "/ui/aliases"
+
   post "/ui/aliases/:id/delete" $ do
     (aid :: Int) <- pathParam "id"
     liftIO $ withPool env $ \conn -> deleteAlias conn aid
@@ -79,81 +94,89 @@ aliasesRoutes env = do
 
 aliasesPage :: [LlmAlias] -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> Html ()
 aliasesPage aliases editId nameFilled urlFilled keyFilled modelFilled tokenLimitFilled reqLimitFilled errorMsg = basePage "MixLLMProxy — Aliases" $ do
-  div_ [class_ "header-row"] $ do
-    h1_ "Aliases"
-  p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
+  div_ [class_ "container"] $ do
+    div_ [class_ "header-row"] $ do
+      h1_ "Aliases"
+    p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
 
-  div_ [class_ "form-section"] $ do
-    h2_ $ toHtml (if isJust editId then ("Edit Alias" :: T.Text) else "New Alias")
-    maybe "" (\e -> div_ [class_ "error"] (toHtml e)) errorMsg
-    form_ [method_ "post", action_ (if isJust editId then "/ui/aliases/" <> showT (fromMaybe 0 editId) <> "/update" else "/ui/aliases/create")] $ do
-      div_ [class_ "form-grid"] $ do
-        label_ [for_ "name"] "Name"
-        input_ [type_ "text", name_ "name", id_ "name", value_ nameFilled, placeholder_ "e.g. openai-prod", required_ ""]
+    div_ [class_ "form-section"] $ do
+      h2_ $ toHtml (if isJust editId then ("Edit Alias" :: T.Text) else "New Alias")
+      maybe "" (\e -> div_ [class_ "error"] (toHtml e)) errorMsg
+      form_ [method_ "post", action_ (if isJust editId then "/ui/aliases/" <> showT (fromMaybe 0 editId) <> "/update" else "/ui/aliases/create")] $ do
+        div_ [class_ "form-grid"] $ do
+          label_ [for_ "name"] "Name"
+          input_ [type_ "text", name_ "name", id_ "name", value_ nameFilled, placeholder_ "e.g. openai-prod", required_ ""]
 
-        label_ [for_ "url"] "Endpoint URL"
-        input_ [type_ "text", name_ "url", id_ "url", value_ urlFilled, placeholder_ "https://api.openai.com/v1/chat/completions", required_ ""]
+          label_ [for_ "url"] "Endpoint URL"
+          input_ [type_ "text", name_ "url", id_ "url", value_ urlFilled, placeholder_ "https://api.openai.com/v1/chat/completions", required_ ""]
 
-        label_ [for_ "key"] "API Key"
-        input_ [type_ "password", name_ "key", id_ "key", value_ keyFilled, placeholder_ "sk-...", autocomplete_ "off"]
+          label_ [for_ "key"] "API Key"
+          div_ [class_ "key-wrapper"] $ do
+            input_ [type_ "password", name_ "key", id_ "key", value_ keyFilled, placeholder_ "sk-...", autocomplete_ "off"]
+            button_ [type_ "button", class_ "btn-toggle-key", id_ "toggleKeyBtn", onclick_ "toggleKey()"] (icon "eye" >> "")
 
-        label_ [for_ "model"] "Model"
-        input_ [type_ "text", name_ "model", id_ "model", value_ modelFilled, placeholder_ "gpt-4o", required_ ""]
+          label_ [for_ "model"] "Model"
+          input_ [type_ "text", name_ "model", id_ "model", value_ modelFilled, placeholder_ "gpt-4o", required_ ""]
 
-        label_ [for_ "daily_token_limit"] "Daily Token Limit"
-        input_ [type_ "number", name_ "daily_token_limit", id_ "daily_token_limit", value_ (limitValueAttr tokenLimitFilled), placeholder_ "blank = no limit", min_ "0"]
+          label_ [for_ "daily_token_limit"] "Daily Token Limit"
+          input_ [type_ "number", name_ "daily_token_limit", id_ "daily_token_limit", value_ (limitValueAttr tokenLimitFilled), placeholder_ "blank = no limit", min_ "0"]
 
-        label_ [for_ "daily_request_limit"] "Daily Request Limit"
-        input_ [type_ "number", name_ "daily_request_limit", id_ "daily_request_limit", value_ (limitValueAttr reqLimitFilled), placeholder_ "blank = no limit", min_ "0"]
+          label_ [for_ "daily_request_limit"] "Daily Request Limit"
+          input_ [type_ "number", name_ "daily_request_limit", id_ "daily_request_limit", value_ (limitValueAttr reqLimitFilled), placeholder_ "blank = no limit", min_ "0"]
 
-      div_ [class_ "form-actions"] $ do
-        button_ [type_ "submit", class_ "btn-save"] (icon "floppy-disk" >> " " >> toHtml (if isJust editId then ("Update" :: T.Text) else "Create"))
-        if isJust editId
-          then a_ [href_ "/ui/aliases", class_ "btn-cancel"] "Cancel"
-          else ""
+        div_ [class_ "form-actions"] $ do
+          button_ [type_ "submit", class_ "btn-save"] (icon "floppy-disk" >> " " >> toHtml (if isJust editId then ("Update" :: T.Text) else "Create"))
+          if isJust editId
+            then a_ [href_ "/ui/aliases", class_ "btn-cancel"] "Cancel"
+            else ""
 
-  h2_ "All Aliases"
-  if null aliases
-    then p_ [class_ "empty"] "No aliases configured. Create one above."
-    else table_ [class_ "aliases-table"] $ do
-      thead_ $ tr_ $ do
-        th_ "Name"
-        th_ "Endpoint URL"
-        th_ "Model"
-        th_ "Limits (24h)"
-        th_ "Actions"
-      tbody_ $ mapM_ aliasRow aliases
+    h2_ "All Aliases"
+    if null aliases
+      then p_ [class_ "empty"] "No aliases configured. Create one above."
+      else table_ [class_ "aliases-table"] $ do
+        thead_ $ tr_ $ do
+          th_ "Name"
+          th_ "Endpoint URL"
+          th_ "Model"
+          th_ "Limits (24h)"
+          th_ "Actions"
+        tbody_ $ mapM_ aliasRow aliases
+
+    script_ [type_ "text/javascript"] $ T.unlines
+      [ "function toggleKey(){var i=document.getElementById('key'),b=document.getElementById('toggleKeyBtn');if(i.type==='password'){i.type='text';b.innerHTML='<i class=\"ph ph-eye-slash\"></i>'}else{i.type='password';b.innerHTML='<i class=\"ph ph-eye\"></i>'}}"
+      ]
 
 aliasesInfoPage :: T.Text -> Html ()
 aliasesInfoPage host = basePage "MixLLMProxy — Aliases Info" $ do
-  div_ [class_ "header-row"] $ do
-    h1_ (icon "info" >> " Alias Info")
-  p_ [class_ "subtitle"] "How aliases work"
+  div_ [class_ "container"] $ do
+    div_ [class_ "header-row"] $ do
+      h1_ (icon "info" >> " Alias Info")
+    p_ [class_ "subtitle"] "How aliases work"
 
-  div_ [class_ "info-section"] $ do
-    p_ $ do
-      "Aliases let you map model names to different LLM backends. Create an alias with a name, endpoint URL, API key, and model — then use that name as the model in your requests."
-    h2_ "Example"
-    p_ $ do
-      "Create an alias named "
-      strong_ "test-bob"
-      " pointing to "
-      strong_ "opencode.ai"
-      " with model "
-      strong_ "deepseek-v4-flash"
-      ". Then:"
-    pre_ [class_ "code-block"] $ code_ (toHtml $ T.intercalate "\n"
-      [ "curl -X POST http://" <> host <> "/api/openai/v1/chat/completions \\"
-      , "  -H \"Content-Type: application/json\" \\"
-      , "  -d '{\"model\":\"test-bob\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'"
-      ])
-    p_ $ do
-      "Proxies to "
-      strong_ "https://opencode.ai/zen/go/v1/chat/completions"
-      " with model "
-      strong_ "deepseek-v4-flash"
-      "."
-    p_ "No matching alias gives a 400 error."
+    div_ [class_ "info-section"] $ do
+      p_ $ do
+        "Aliases let you map model names to different LLM backends. Create an alias with a name, endpoint URL, API key, and model — then use that name as the model in your requests."
+      h2_ "Example"
+      p_ $ do
+        "Create an alias named "
+        strong_ "test-bob"
+        " pointing to "
+        strong_ "opencode.ai"
+        " with model "
+        strong_ "deepseek-v4-flash"
+        ". Then:"
+      pre_ [class_ "code-block"] $ code_ (toHtml $ T.intercalate "\n"
+        [ "curl -X POST http://" <> host <> "/api/openai/v1/chat/completions \\"
+        , "  -H \"Content-Type: application/json\" \\"
+        , "  -d '{\"model\":\"test-bob\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'"
+        ])
+      p_ $ do
+        "Proxies to "
+        strong_ "https://opencode.ai/zen/go/v1/chat/completions"
+        " with model "
+        strong_ "deepseek-v4-flash"
+        "."
+      p_ "No matching alias gives a 400 error."
 
 aliasRow :: LlmAlias -> Html ()
 aliasRow a = tr_ $ do
@@ -163,6 +186,8 @@ aliasRow a = tr_ $ do
   td_ [class_ "alias-limits"] (toHtml (formatLimits a))
   td_ [class_ "actions"] $ do
     a_ [href_ ("/ui/aliases/" <> showT (laId a) <> "/edit"), class_ "btn-edit"] (icon "pencil" >> " Edit")
+    form_ [method_ "post", action_ ("/ui/aliases/" <> showT (laId a) <> "/duplicate"), class_ "form-inline"] $
+      button_ [type_ "submit", class_ "btn-duplicate"] (icon "copy" >> " Duplicate")
     form_ [method_ "post", action_ ("/ui/aliases/" <> showT (laId a) <> "/delete"), class_ "form-inline"] $
       button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete this alias?')"] (icon "trash" >> " Delete")
 
