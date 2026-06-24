@@ -24,6 +24,7 @@ module DB
   , updateAlias
   , deleteAlias
   , getAliasUsage24h
+  , parseDuration
   ) where
 
 import Database.PostgreSQL.Simple
@@ -40,6 +41,8 @@ import System.Environment (getEnv)
 import Text.Read (readMaybe)
 import System.IO (hPutStrLn, stderr)
 import Control.Monad (void)
+import Data.Char (isDigit, isAlpha, isSpace)
+
 
 data LlmRequest = LlmRequest
   { lrId :: Int
@@ -164,45 +167,110 @@ getSortSql sortBy sortDir =
         _      -> "DESC"
   in fromString (cs $ validCol <> " " <> validDir)
 
-buildFilter :: Text -> Text -> (Query, [Action])
-buildFilter field queryVal
+buildFilters :: Text -> Text -> Maybe Text -> (Query, [Action])
+buildFilters searchField searchQuery mDuration =
+  let (searchSql, searchParams) = buildSearchFilter searchField searchQuery
+      (durSql, durParams) = buildDurationFilter mDuration
+  in case (searchSql, durSql) of
+       ("", "") -> ("", [])
+       (s, "")  -> (" WHERE " <> s, searchParams)
+       ("", d)  -> (" WHERE " <> d, durParams)
+       (s, d)   -> (" WHERE (" <> s <> ") AND (" <> d <> ")", searchParams ++ durParams)
+
+buildSearchFilter :: Text -> Text -> (Query, [Action])
+buildSearchFilter field queryVal
   | T.null (T.strip queryVal) = ("", [])
   | otherwise =
       let likeVal = "%" <> queryVal <> "%"
       in case field of
         "any" ->
-          ( " WHERE (model ILIKE ? OR alias_name ILIKE ? OR request_body ILIKE ? OR response_body ILIKE ? OR endpoint ILIKE ? OR method ILIKE ? OR response_status::text ILIKE ?)"
+          ( "(model ILIKE ? OR alias_name ILIKE ? OR request_body ILIKE ? OR response_body ILIKE ? OR endpoint ILIKE ? OR method ILIKE ? OR response_status::text ILIKE ?)"
           , replicate 7 (toField likeVal)
           )
         "model" ->
-          ( " WHERE model ILIKE ?"
+          ( "model ILIKE ?"
           , [toField likeVal]
           )
         "alias" ->
-          ( " WHERE alias_name ILIKE ?"
+          ( "alias_name ILIKE ?"
           , [toField likeVal]
           )
         "req_body" ->
-          ( " WHERE request_body ILIKE ?"
+          ( "request_body ILIKE ?"
           , [toField likeVal]
           )
         "resp_body" ->
-          ( " WHERE response_body ILIKE ?"
+          ( "response_body ILIKE ?"
           , [toField likeVal]
           )
         "endpoint" ->
-          ( " WHERE endpoint ILIKE ?"
+          ( "endpoint ILIKE ?"
           , [toField likeVal]
           )
         "status" ->
-          ( " WHERE response_status::text ILIKE ?"
+          ( "response_status::text ILIKE ?"
           , [toField likeVal]
           )
         _ -> ("", [])
 
-getRecentRequestsFiltered :: Connection -> Int -> Int -> Text -> Text -> Text -> Text -> IO [LlmRequest]
-getRecentRequestsFiltered conn limit offset sortBy sortDir searchField searchQuery = do
-  let (filterSql, filterParams) = buildFilter searchField searchQuery
+buildDurationFilter :: Maybe Text -> (Query, [Action])
+buildDurationFilter Nothing = ("", [])
+buildDurationFilter (Just intervalStr) =
+  ( "created_at >= NOW() - ?::interval"
+  , [toField intervalStr]
+  )
+
+parseDuration :: Text -> Maybe Text
+parseDuration t =
+  let clean = T.filter (not . isSpace) t
+  in if T.null clean
+       then Nothing
+       else case parseSegments clean of
+              [] -> Nothing
+              segs -> Just (T.unwords segs)
+
+parseSegments :: Text -> [Text]
+parseSegments t
+  | T.null t = []
+  | otherwise =
+      let (digits, rest) = T.span isDigit t
+          (unit, remaining) = T.span isAlpha rest
+      in if T.null digits || T.null unit
+           then []
+           else case mapUnit unit of
+                  Just pgUnit -> (digits <> " " <> pgUnit) : parseSegments remaining
+                  Nothing -> parseSegments remaining
+
+mapUnit :: Text -> Maybe Text
+mapUnit u = case T.toLower u of
+  "s"       -> Just "seconds"
+  "sec"     -> Just "seconds"
+  "secs"    -> Just "seconds"
+  "second"  -> Just "seconds"
+  "seconds" -> Just "seconds"
+  "m"       -> Just "minutes"
+  "min"     -> Just "minutes"
+  "mins"    -> Just "minutes"
+  "minute"  -> Just "minutes"
+  "minutes" -> Just "minutes"
+  "h"       -> Just "hours"
+  "hr"      -> Just "hours"
+  "hrs"     -> Just "hours"
+  "hour"    -> Just "hours"
+  "hours"   -> Just "hours"
+  "d"       -> Just "days"
+  "day"     -> Just "days"
+  "days"    -> Just "days"
+  "w"       -> Just "weeks"
+  "wk"      -> Just "weeks"
+  "wks"     -> Just "weeks"
+  "week"    -> Just "weeks"
+  "weeks"   -> Just "weeks"
+  _         -> Nothing
+
+getRecentRequestsFiltered :: Connection -> Int -> Int -> Text -> Text -> Text -> Text -> Text -> IO [LlmRequest]
+getRecentRequestsFiltered conn limit offset sortBy sortDir searchField searchQuery duration = do
+  let (filterSql, filterParams) = buildFilters searchField searchQuery (parseDuration duration)
       sortSql = getSortSql sortBy sortDir
       sql = "SELECT " <> requestColumns <> " FROM llm_requests" <> filterSql <> " ORDER BY " <> sortSql <> " LIMIT ? OFFSET ?"
       params = filterParams ++ [toField limit, toField offset]
@@ -220,9 +288,9 @@ countRequests conn = do
   [Only c] <- query_ conn "SELECT COUNT(*) FROM llm_requests"
   pure c
 
-countRequestsFiltered :: Connection -> Text -> Text -> IO Int
-countRequestsFiltered conn searchField searchQuery = do
-  let (filterSql, filterParams) = buildFilter searchField searchQuery
+countRequestsFiltered :: Connection -> Text -> Text -> Text -> IO Int
+countRequestsFiltered conn searchField searchQuery duration = do
+  let (filterSql, filterParams) = buildFilters searchField searchQuery (parseDuration duration)
       sql = "SELECT COUNT(*) FROM llm_requests" <> filterSql
   [Only c] <- query conn sql filterParams
   pure c

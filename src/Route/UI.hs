@@ -67,16 +67,17 @@ uiRoutes env = do
     sortDir <- queryParamDefault "sort_dir" ("desc" :: T.Text)
     searchField <- queryParamDefault "search_field" ("any" :: T.Text)
     searchQuery <- queryParamDefault "search_query" ("" :: T.Text)
+    duration <- queryParamDefault "duration" ("" :: T.Text)
     let perPage = 25
     let offset = (pageNum - 1) * perPage
     requests <- liftIO $ withPool env $ \conn ->
-      getRecentRequestsFiltered conn perPage offset sortBy sortDir searchField searchQuery
+      getRecentRequestsFiltered conn perPage offset sortBy sortDir searchField searchQuery duration
     total <- liftIO $ withPool env $ \conn ->
-      countRequestsFiltered conn searchField searchQuery
+      countRequestsFiltered conn searchField searchQuery duration
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
     aliasUsages <- liftIO $ withPool env $ \conn -> getAliasesWithUsage conn
     host <- header "Host"
-    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages aliasUsages sortBy sortDir searchField searchQuery
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages total aliasUsages sortBy sortDir searchField searchQuery duration
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
@@ -87,21 +88,22 @@ uiRoutes env = do
     liftIO $ withPool env $ \conn -> truncateRequests conn
     redirect "/ui/"
 
-makeUrl :: Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
-makeUrl pageNum sortBy sortDir searchField searchQuery =
+makeUrl :: Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
+makeUrl pageNum sortBy sortDir searchField searchQuery duration =
   T.concat
     [ "/ui/?page=", showT pageNum
     , "&sort_by=", sortBy
     , "&sort_dir=", sortDir
     , "&search_field=", searchField
     , "&search_query=", searchQuery
+    , "&duration=", duration
     ]
 
-sortableHeader :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html () -> Html ()
-sortableHeader targetCol currentSortBy currentSortDir currentSearchField currentSearchQuery content = do
+sortableHeader :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html () -> Html ()
+sortableHeader targetCol currentSortBy currentSortDir currentSearchField currentSearchQuery duration content = do
   let isSorted = currentSortBy == targetCol
       newDir = if isSorted && currentSortDir == "asc" then "desc" else "asc"
-      queryStr = makeUrl 1 targetCol newDir currentSearchField currentSearchQuery
+      queryStr = makeUrl 1 targetCol newDir currentSearchField currentSearchQuery duration
       indicator :: T.Text
       indicator = if isSorted
                     then if currentSortDir == "asc" then " ▲" else " ▼"
@@ -111,30 +113,48 @@ sortableHeader targetCol currentSortBy currentSortDir currentSearchField current
       content
       toHtml indicator
 
-searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> Html ()
-searchForm searchField searchQuery sortBy sortDir =
-  form_ [action_ "/ui/", method_ "get", style_ "display: flex; gap: 8px; align-items: center; margin: 16px 0;"] $ do
-    select_ [name_ "search_field", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; cursor: pointer;"] $ do
-      optionSelected "any" "Any text field"
-      optionSelected "model" "Model"
-      optionSelected "alias" "Alias"
-      optionSelected "req_body" "Request Body"
-      optionSelected "resp_body" "Response Body"
-      optionSelected "endpoint" "Endpoint"
-      optionSelected "status" "Status"
-    input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 280px;"]
-    input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
-    input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
-    button_ [type_ "submit", style_ "background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600;"] "Search"
-    a_ [href_ "/ui/", class_ "btn-cancel", style_ "text-decoration: none; line-height: 1.8; text-align: center; font-size: 13px;"] "Clear"
+searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
+searchForm searchField searchQuery sortBy sortDir duration =
+  div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 18px; margin: 16px 0;"] $ do
+    form_ [action_ "/ui/", method_ "get", style_ "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"] $ do
+      select_ [name_ "search_field", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; cursor: pointer;"] $ do
+        optionSelected "any" "Any text field"
+        optionSelected "model" "Model"
+        optionSelected "alias" "Alias"
+        optionSelected "req_body" "Request Body"
+        optionSelected "resp_body" "Response Body"
+        optionSelected "endpoint" "Endpoint"
+        optionSelected "status" "Status"
+      input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 280px;"]
+      span_ [style_ "color: #8b949e; font-size: 13px; margin-left: 4px;"] (icon "ph-clock" >> " Age:")
+      input_ [type_ "text", name_ "duration", value_ duration, placeholder_ "All time (e.g. 10m, 1h)", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 160px;"]
+      input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
+      input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
+      button_ [type_ "submit", style_ "background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600;"] "Filter"
+      a_ [href_ "/ui/", class_ "btn-cancel", style_ "text-decoration: none; line-height: 1.8; text-align: center; font-size: 13px;"] "Clear"
+    div_ [style_ "display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; color: #8b949e;"] $ do
+      span_ "Quick age:"
+      let quickLink :: T.Text -> T.Text -> Html ()
+          quickLink label dur =
+            let active = duration == dur
+                bg = if active then "#58a6ff" else "#21262d"
+                fg = if active then "#0d1117" else "#c9d1d9"
+                border = if active then "1px solid #58a6ff" else "1px solid #30363d"
+                url = makeUrl 1 sortBy sortDir searchField searchQuery dur
+            in a_ [href_ url, style_ ("background: " <> bg <> "; color: " <> fg <> "; border: " <> border <> "; border-radius: 4px; padding: 2px 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;")] (toHtml label)
+      quickLink "All" ""
+      quickLink "10m" "10m"
+      quickLink "1h" "1h"
+      quickLink "24h" "24h"
+      quickLink "7d" "7d"
   where
     optionSelected :: T.Text -> T.Text -> Html ()
     optionSelected val label =
       let attrs = [value_ val] ++ [selected_ "selected" | searchField == val]
       in option_ attrs (toHtml label)
 
-page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
-page host requests pageNum totalPages aliasUsages sortBy sortDir searchField searchQuery = do
+page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
+page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration = do
     div_ [class_ "header-row"] $ do
       h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
@@ -145,12 +165,12 @@ page host requests pageNum totalPages aliasUsages sortBy sortDir searchField sea
       form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
     rateLimitSection aliasUsages
-    searchForm searchField searchQuery sortBy sortDir
-    pagination pageNum totalPages sortBy sortDir searchField searchQuery
+    searchForm searchField searchQuery sortBy sortDir duration
+    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
     table_ [class_ "requests"] $ do
       thead_ $ do
         tr_ $ do
-          let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery label
+          let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery duration label
           hdr "id" "#"
           hdr "created_at" (icon "ph-clock" >> " Time")
           hdr "input_chars" (icon "ph-download-simple" >> " Input Chars")
@@ -165,7 +185,7 @@ page host requests pageNum totalPages aliasUsages sortBy sortDir searchField sea
           hdr "request_body" (icon "ph-paper-plane-right" >> " Request")
           hdr "response_body" (icon "ph-paper-plane-left" >> " Response")
       tbody_ $ mapM_ requestRow requests
-    pagination pageNum totalPages sortBy sortDir searchField searchQuery
+    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
     script_ (refreshScript <> clickScript)
 
 requestRow :: LlmRequest -> Html ()
@@ -278,14 +298,16 @@ detailJsonScript = T.intercalate "\n"
   , "})();"
   ]
 
-pagination :: Int -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
-pagination pageNum totalPages sortBy sortDir searchField searchQuery = div_ [class_ "pagination"] $ do
-  let prevUrl = makeUrl (pageNum - 1) sortBy sortDir searchField searchQuery
-      nextUrl = makeUrl (pageNum + 1) sortBy sortDir searchField searchQuery
+pagination :: Int -> Int -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
+pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration = div_ [class_ "pagination"] $ do
+  let prevUrl = makeUrl (pageNum - 1) sortBy sortDir searchField searchQuery duration
+      nextUrl = makeUrl (pageNum + 1) sortBy sortDir searchField searchQuery duration
   if pageNum > 1
     then a_ [href_ prevUrl] (icon "caret-left" >> " Prev")
     else span_ [class_ "disabled"] (icon "caret-left" >> " Prev")
-  span_ [class_ "page-info"] (toHtml ("Page " <> showT pageNum <> " of " <> showT totalPages))
+  span_ [class_ "page-info"] (toHtml ("Page " <> showT pageNum <> " of " <> showT totalPages <> " (" <> showT totalResults <> " total results)"))
   if pageNum < totalPages
     then a_ [href_ nextUrl] ("Next " >> icon "caret-right")
     else span_ [class_ "disabled"] ("Next " >> icon "caret-right")
+
+

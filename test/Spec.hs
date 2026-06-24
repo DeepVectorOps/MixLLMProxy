@@ -11,10 +11,29 @@ import Control.Exception (catch)
 import Network.Socket (withSocketsDo)
 
 import Route.OpenAI (buildRequest)
+import DB (parseDuration)
 
 main :: IO ()
 main = withSocketsDo $ do
-  putStrLn "=== buildRequest sets responseTimeoutNone ==="
+  putStrLn "=== parseDuration unit tests ==="
+  let check (input, expected) =
+        let result = parseDuration input
+        in if result == expected
+             then putStrLn $ "PASS: " ++ show input ++ " -> " ++ show result
+             else error $ "FAIL: expected " ++ show expected ++ ", got " ++ show result
+  mapM_ check
+    [ ("", Nothing)
+    , ("   ", Nothing)
+    , ("10m", Just "10 minutes")
+    , ("1h", Just "1 hours")
+    , (" 2h 30m ", Just "2 hours 30 minutes")
+    , ("7d", Just "7 days")
+    , ("2wks", Just "2 weeks")
+    , ("invalid", Nothing)
+    , ("10", Nothing)
+    ]
+
+  putStrLn "\n=== buildRequest sets responseTimeoutNone ==="
   req <- buildRequest "http://example.com" "sk-test" "{}"
   if responseTimeout req == responseTimeoutNone
     then putStrLn "PASS"
