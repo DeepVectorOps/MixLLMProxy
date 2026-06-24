@@ -136,7 +136,7 @@ searchForm searchField searchQuery sortBy sortDir =
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
 page host requests pageNum totalPages aliasUsages sortBy sortDir searchField searchQuery = do
     div_ [class_ "header-row"] $ do
-      h1_ "🔭 MixLLMProxy"
+      h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
       a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let base = fromMaybe "localhost" (TL.toStrict <$> host)
