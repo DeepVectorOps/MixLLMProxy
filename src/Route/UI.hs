@@ -6,7 +6,7 @@ module Route.UI (uiRoutes) where
 import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
-import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequests, getRequest, countRequests, truncateRequests, getAliasesWithUsage)
+import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequests, getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, getAliasesWithUsage)
 import Common (icon, showT, maybeDash, basePage, queryParamDefault)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -63,14 +63,20 @@ uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
   get "/ui/" $ do
     pageNum <- queryParamDefault "page" 1
+    sortBy <- queryParamDefault "sort_by" ("created_at" :: T.Text)
+    sortDir <- queryParamDefault "sort_dir" ("desc" :: T.Text)
+    searchField <- queryParamDefault "search_field" ("any" :: T.Text)
+    searchQuery <- queryParamDefault "search_query" ("" :: T.Text)
     let perPage = 25
     let offset = (pageNum - 1) * perPage
-    requests <- liftIO $ withPool env $ \conn -> getRecentRequests conn perPage offset
-    total <- liftIO $ withPool env $ \conn -> countRequests conn
+    requests <- liftIO $ withPool env $ \conn ->
+      getRecentRequestsFiltered conn perPage offset sortBy sortDir searchField searchQuery
+    total <- liftIO $ withPool env $ \conn ->
+      countRequestsFiltered conn searchField searchQuery
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
     aliasUsages <- liftIO $ withPool env $ \conn -> getAliasesWithUsage conn
     host <- header "Host"
-    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages aliasUsages
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages aliasUsages sortBy sortDir searchField searchQuery
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
@@ -81,8 +87,54 @@ uiRoutes env = do
     liftIO $ withPool env $ \conn -> truncateRequests conn
     redirect "/ui/"
 
-page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> [AliasUsage] -> Html ()
-page host requests pageNum totalPages aliasUsages = do
+makeUrl :: Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
+makeUrl pageNum sortBy sortDir searchField searchQuery =
+  T.concat
+    [ "/ui/?page=", showT pageNum
+    , "&sort_by=", sortBy
+    , "&sort_dir=", sortDir
+    , "&search_field=", searchField
+    , "&search_query=", searchQuery
+    ]
+
+sortableHeader :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html () -> Html ()
+sortableHeader targetCol currentSortBy currentSortDir currentSearchField currentSearchQuery content = do
+  let isSorted = currentSortBy == targetCol
+      newDir = if isSorted && currentSortDir == "asc" then "desc" else "asc"
+      queryStr = makeUrl 1 targetCol newDir currentSearchField currentSearchQuery
+      indicator :: T.Text
+      indicator = if isSorted
+                    then if currentSortDir == "asc" then " ▲" else " ▼"
+                    else ""
+  th_ $ do
+    a_ [href_ queryStr, style_ "color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"] $ do
+      content
+      toHtml indicator
+
+searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> Html ()
+searchForm searchField searchQuery sortBy sortDir =
+  form_ [action_ "/ui/", method_ "get", style_ "display: flex; gap: 8px; align-items: center; margin: 16px 0;"] $ do
+    select_ [name_ "search_field", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; cursor: pointer;"] $ do
+      optionSelected "any" "Any text field"
+      optionSelected "model" "Model"
+      optionSelected "alias" "Alias"
+      optionSelected "req_body" "Request Body"
+      optionSelected "resp_body" "Response Body"
+      optionSelected "endpoint" "Endpoint"
+      optionSelected "status" "Status"
+    input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 280px;"]
+    input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
+    input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
+    button_ [type_ "submit", style_ "background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600;"] "Search"
+    a_ [href_ "/ui/", class_ "btn-cancel", style_ "text-decoration: none; line-height: 1.8; text-align: center; font-size: 13px;"] "Clear"
+  where
+    optionSelected :: T.Text -> T.Text -> Html ()
+    optionSelected val label =
+      let attrs = [value_ val] ++ [selected_ "selected" | searchField == val]
+      in option_ attrs (toHtml label)
+
+page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
+page host requests pageNum totalPages aliasUsages sortBy sortDir searchField searchQuery = do
     div_ [class_ "header-row"] $ do
       h1_ "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
@@ -93,25 +145,27 @@ page host requests pageNum totalPages aliasUsages = do
       form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
     rateLimitSection aliasUsages
-    pagination pageNum totalPages
+    searchForm searchField searchQuery sortBy sortDir
+    pagination pageNum totalPages sortBy sortDir searchField searchQuery
     table_ [class_ "requests"] $ do
       thead_ $ do
         tr_ $ do
-          th_ "#"
-          th_ (icon "ph-clock" >> " Time")
-          th_ (icon "ph-download-simple" >> " Input Chars")
-          th_ (icon "ph-upload-simple" >> " Output Chars")
-          th_ (icon "ph-cpu" >> " Model")
-          th_ (icon "ph-tag" >> " Alias")
-          th_ (icon "ph-arrow-line-down" >> " In Tok")
-          th_ (icon "ph-arrow-line-up" >> " Out Tok")
-          th_ (icon "ph-equals" >> " Total")
-          th_ (icon "ph-check-circle" >> " Status")
-          th_ (icon "ph-timer" >> " Duration")
-          th_ (icon "ph-paper-plane-right" >> " Request")
-          th_ (icon "ph-paper-plane-left" >> " Response")
+          let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery label
+          hdr "id" "#"
+          hdr "created_at" (icon "ph-clock" >> " Time")
+          hdr "input_chars" (icon "ph-download-simple" >> " Input Chars")
+          hdr "output_chars" (icon "ph-upload-simple" >> " Output Chars")
+          hdr "model" (icon "ph-cpu" >> " Model")
+          hdr "alias_name" (icon "ph-tag" >> " Alias")
+          hdr "prompt_tokens" (icon "ph-arrow-line-down" >> " In Tok")
+          hdr "completion_tokens" (icon "ph-arrow-line-up" >> " Out Tok")
+          hdr "total_tokens" (icon "ph-equals" >> " Total")
+          hdr "response_status" (icon "ph-check-circle" >> " Status")
+          hdr "latency_ms" (icon "ph-timer" >> " Duration")
+          hdr "request_body" (icon "ph-paper-plane-right" >> " Request")
+          hdr "response_body" (icon "ph-paper-plane-left" >> " Response")
       tbody_ $ mapM_ requestRow requests
-    pagination pageNum totalPages
+    pagination pageNum totalPages sortBy sortDir searchField searchQuery
     script_ (refreshScript <> clickScript)
 
 requestRow :: LlmRequest -> Html ()
@@ -224,10 +278,10 @@ detailJsonScript = T.intercalate "\n"
   , "})();"
   ]
 
-pagination :: Int -> Int -> Html ()
-pagination pageNum totalPages = div_ [class_ "pagination"] $ do
-  let prevUrl = "/ui/?page=" <> showT (pageNum - 1)
-      nextUrl = "/ui/?page=" <> showT (pageNum + 1)
+pagination :: Int -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
+pagination pageNum totalPages sortBy sortDir searchField searchQuery = div_ [class_ "pagination"] $ do
+  let prevUrl = makeUrl (pageNum - 1) sortBy sortDir searchField searchQuery
+      nextUrl = makeUrl (pageNum + 1) sortBy sortDir searchField searchQuery
   if pageNum > 1
     then a_ [href_ prevUrl] (icon "caret-left" >> " Prev")
     else span_ [class_ "disabled"] (icon "caret-left" >> " Prev")

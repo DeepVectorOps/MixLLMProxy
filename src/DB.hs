@@ -8,11 +8,12 @@ module DB
   , insertPendingRequest
   , updateRequest
   , getRecentRequests
+  , getRecentRequestsFiltered
   , getRequest
   , countRequests
+  , countRequestsFiltered
   , truncateRequests
   , LlmRequest(..)
-
   , LlmAlias(..)
   , getAliases
   , getAliasesWithUsage
@@ -27,7 +28,9 @@ module DB
 
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.FromRow
+import Database.PostgreSQL.Simple.ToField (toField, Action)
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 import NeatInterpolation (text)
@@ -136,6 +139,75 @@ updateRequest conn rid respStatus respBody latencyMs model promptT complT totalT
 getRecentRequests :: Connection -> Int -> Int -> IO [LlmRequest]
 getRecentRequests conn limit offset = query conn ("SELECT " <> requestColumns <> " FROM llm_requests ORDER BY created_at DESC LIMIT ? OFFSET ?") (limit, offset)
 
+getSortSql :: Text -> Text -> Query
+getSortSql sortBy sortDir =
+  let validCol :: Text
+      validCol = case sortBy of
+        "id"                -> "id"
+        "created_at"        -> "created_at"
+        "model"             -> "model"
+        "alias_name"        -> "alias_name"
+        "prompt_tokens"     -> "prompt_tokens"
+        "completion_tokens" -> "completion_tokens"
+        "total_tokens"      -> "total_tokens"
+        "response_status"   -> "response_status"
+        "latency_ms"        -> "latency_ms"
+        "request_body"      -> "request_body"
+        "response_body"     -> "response_body"
+        "input_chars"       -> "length(request_body)"
+        "output_chars"      -> "length(response_body)"
+        _                   -> "created_at"
+      validDir :: Text
+      validDir = case T.toLower sortDir of
+        "asc"  -> "ASC"
+        "desc" -> "DESC"
+        _      -> "DESC"
+  in fromString (cs $ validCol <> " " <> validDir)
+
+buildFilter :: Text -> Text -> (Query, [Action])
+buildFilter field queryVal
+  | T.null (T.strip queryVal) = ("", [])
+  | otherwise =
+      let likeVal = "%" <> queryVal <> "%"
+      in case field of
+        "any" ->
+          ( " WHERE (model ILIKE ? OR alias_name ILIKE ? OR request_body ILIKE ? OR response_body ILIKE ? OR endpoint ILIKE ? OR method ILIKE ? OR response_status::text ILIKE ?)"
+          , replicate 7 (toField likeVal)
+          )
+        "model" ->
+          ( " WHERE model ILIKE ?"
+          , [toField likeVal]
+          )
+        "alias" ->
+          ( " WHERE alias_name ILIKE ?"
+          , [toField likeVal]
+          )
+        "req_body" ->
+          ( " WHERE request_body ILIKE ?"
+          , [toField likeVal]
+          )
+        "resp_body" ->
+          ( " WHERE response_body ILIKE ?"
+          , [toField likeVal]
+          )
+        "endpoint" ->
+          ( " WHERE endpoint ILIKE ?"
+          , [toField likeVal]
+          )
+        "status" ->
+          ( " WHERE response_status::text ILIKE ?"
+          , [toField likeVal]
+          )
+        _ -> ("", [])
+
+getRecentRequestsFiltered :: Connection -> Int -> Int -> Text -> Text -> Text -> Text -> IO [LlmRequest]
+getRecentRequestsFiltered conn limit offset sortBy sortDir searchField searchQuery = do
+  let (filterSql, filterParams) = buildFilter searchField searchQuery
+      sortSql = getSortSql sortBy sortDir
+      sql = "SELECT " <> requestColumns <> " FROM llm_requests" <> filterSql <> " ORDER BY " <> sortSql <> " LIMIT ? OFFSET ?"
+      params = filterParams ++ [toField limit, toField offset]
+  query conn sql params
+
 getRequest :: Connection -> Int -> IO (Maybe LlmRequest)
 getRequest conn rid = do
   results <- query conn ("SELECT " <> requestColumns <> " FROM llm_requests WHERE id = ?") (Only rid)
@@ -146,6 +218,13 @@ getRequest conn rid = do
 countRequests :: Connection -> IO Int
 countRequests conn = do
   [Only c] <- query_ conn "SELECT COUNT(*) FROM llm_requests"
+  pure c
+
+countRequestsFiltered :: Connection -> Text -> Text -> IO Int
+countRequestsFiltered conn searchField searchQuery = do
+  let (filterSql, filterParams) = buildFilter searchField searchQuery
+      sql = "SELECT COUNT(*) FROM llm_requests" <> filterSql
+  [Only c] <- query conn sql filterParams
   pure c
 
 aliasColumns :: Query
