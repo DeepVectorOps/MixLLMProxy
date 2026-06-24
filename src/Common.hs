@@ -9,6 +9,7 @@ module Common
   , baseHead
   , basePage
   , queryParamDefault
+  , formParamDefault
   , aliasBadge
   ) where
 
@@ -16,7 +17,7 @@ import Lucid
 import Web.Scotty.Trans (Parsable)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
-import Web.Scotty (ActionM, queryParam, catch)
+import Web.Scotty (ActionM, queryParam, formParam, catch)
 import Control.Exception (SomeException)
 import Data.Maybe (maybe)
 
@@ -50,6 +51,9 @@ basePage titleText bodyContent = doctype_ >> html_ [lang_ "en"] (do
 
 queryParamDefault :: Parsable a => TL.Text -> a -> ActionM a
 queryParamDefault key fallback = queryParam key `catch` (\(_ :: SomeException) -> pure fallback)
+
+formParamDefault :: Parsable a => TL.Text -> a -> ActionM a
+formParamDefault key fallback = formParam key `catch` (\(_ :: SomeException) -> pure fallback)
 
 hashText :: T.Text -> Int
 hashText = T.foldl' (\h c -> h * 33 + fromEnum c) 5381
