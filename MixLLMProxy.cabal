@@ -30,6 +30,7 @@ library
     , aeson-pretty
     , base
     , bytestring
+    , case-insensitive
     , http-client
     , http-client-tls
     , http-types
@@ -64,6 +65,7 @@ executable app
     , aeson-pretty
     , base
     , bytestring
+    , case-insensitive
     , http-client
     , http-client-tls
     , http-types

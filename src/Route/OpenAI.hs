@@ -16,6 +16,7 @@ import qualified Data.Aeson as A
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (parseMaybe)
 import Data.String.Conversions (cs)
+import Data.Maybe (listToMaybe, isJust)
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (SomeException, finally)
 import qualified Control.Exception as E
@@ -170,15 +171,32 @@ proxyAndLog env rid downstreamUrl apiKey aliasName reqBody = do
   stream streamAction
 
 extractPayload :: BL.ByteString -> (Maybe T.Text, (Maybe Int, Maybe Int, Maybe Int))
-extractPayload body = case A.decode cleanBody of
-  Just v  -> (parseMaybe (A..: "model") v, extractTokens v)
-  Nothing -> (Nothing, (Nothing, Nothing, Nothing))
+extractPayload body
+  | isSSE = (firstModel, lastTokens)
+  | otherwise = case A.decode body of
+      Just v  -> (parseMaybe (A..: "model") v, extractTokens v)
+      Nothing -> (Nothing, (Nothing, Nothing, Nothing))
   where
-    cleanBody
-      | "data: " `BLC.isPrefixOf` body =
-          BLC.takeWhile (/= '\n') (BLC.dropWhile (/= '{') body)
-      | otherwise = body
-    extractTokens v = case parseMaybe (A..: "usage") v of
+    lines' = BLC.lines body
+    isSSE = any ("data: " `BLC.isPrefixOf`) lines'
+
+    parsedChunks :: [A.Object]
+    parsedChunks =
+      [ obj
+      | line <- lines'
+      , let cleanLine = BLC.drop 6 line
+      , cleanLine /= "[DONE]"
+      , Just (A.Object obj) <- [A.decode cleanLine]
+      ]
+
+    firstModel = listToMaybe [ m | obj <- parsedChunks, Just m <- [parseMaybe (A..: "model") obj] ]
+
+    tokenUsages = [ extractTokens obj | obj <- parsedChunks ]
+    lastTokens = case filter (\(p, c, t) -> isJust p || isJust c || isJust t) tokenUsages of
+      [] -> (Nothing, Nothing, Nothing)
+      us -> last us
+
+    extractTokens obj = case parseMaybe (A..: "usage") obj of
       Just u  -> ( parseMaybe (A..: "prompt_tokens") u
                  , parseMaybe (A..: "completion_tokens") u
                  , parseMaybe (A..: "total_tokens") u
