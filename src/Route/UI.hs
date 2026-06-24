@@ -130,8 +130,8 @@ sortableHeader targetCol currentSortBy currentSortDir currentSearchField current
 
 searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
 searchForm searchField searchQuery sortBy sortDir duration =
-  div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 18px; margin: 16px 0;"] $ do
-    form_ [action_ "/ui/", method_ "get", style_ "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;"] $ do
+  div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 18px; margin: 16px auto; max-width: 700px;"] $ do
+    form_ [action_ "/ui/", method_ "get", style_ "display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;"] $ do
       select_ [name_ "search_field", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; cursor: pointer;"] $ do
         optionSelected "any" "Any text field"
         optionSelected "model" "Model"
@@ -147,7 +147,7 @@ searchForm searchField searchQuery sortBy sortDir duration =
       input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
       button_ [type_ "submit", style_ "background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600;"] "Filter"
       a_ [href_ "/ui/", class_ "btn-cancel", style_ "text-decoration: none; line-height: 1.8; text-align: center; font-size: 13px;"] "Clear"
-    div_ [style_ "display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: 12px; color: #8b949e;"] $ do
+    div_ [style_ "display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 8px; font-size: 12px; color: #8b949e;"] $ do
       span_ "Quick age:"
       let quickLink :: T.Text -> T.Text -> Html ()
           quickLink label dur =
@@ -174,10 +174,10 @@ settingsSection s = do
       mSlow = gsSlowLimit s
       isSlowActive = case mSlow of { Just _ -> True; Nothing -> False }
       slowValText = case mSlow of { Just v -> showT v; Nothing -> "2.0" }
-  div_ [style_ "display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap;"] $ do
+  div_ [style_ "display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; justify-content: center;"] $ do
     
     -- Row 1: Global Pause
-    div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 1; min-width: 320px;"] $ do
+    div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; min-width: 320px; max-width: 500px;"] $ do
       div_ [style_ "display: flex; align-items: center; gap: 8px;"] $ do
         span_ [style_ "color: #58a6ff; font-size: 14px; display: inline-flex; align-items: center;"] (icon "ph-power")
         strong_ [style_ "font-size: 13px; color: #e6edf3;"] "Global Pause"
@@ -192,7 +192,7 @@ settingsSection s = do
           else button_ [type_ "submit", style_ "background: #da3633; border: none; border-radius: 6px; color: white; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"] (icon "ph-pause" >> " Pause API")
 
     -- Row 2: Speed Limiter
-    div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 1; min-width: 380px;"] $ do
+    div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; min-width: 380px; max-width: 540px;"] $ do
       div_ [style_ "display: flex; align-items: center; gap: 8px;"] $ do
         span_ [style_ "color: #e3b341; font-size: 14px; display: inline-flex; align-items: center;"] (icon "ph-gauge")
         strong_ [style_ "font-size: 13px; color: #e6edf3;"] "Speed Limiter"
