@@ -9,7 +9,7 @@ import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
 import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequests, getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, getAliasesWithUsage)
 import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
-import Common (icon, showT, maybeDash, basePage, queryParamDefault, formParamDefault, aliasBadge)
+import Common (icon, showT, showWithCommas, maybeDash, basePage, queryParamDefault, formParamDefault, aliasBadge)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -52,14 +52,14 @@ limitBar label count mlim = case mlim of
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ (toHtml label)
-        span_ [class_ "limit-bar-nums"] (toHtml (showT count <> " / " <> showT lim <> "  (" <> pctTxt <> ")"))
+        span_ [class_ "limit-bar-nums"] (toHtml (showWithCommas count <> " / " <> showWithCommas lim <> "  (" <> pctTxt <> ")"))
       div_ [class_ "limit-bar-track"] $
         div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT widthPct <> "%")] ""
   _ -> do
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ (toHtml label)
-        span_ [class_ "limit-bar-nums"] (toHtml (showT count <> " / ∞"))
+        span_ [class_ "limit-bar-nums"] (toHtml (showWithCommas count <> " / ∞"))
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do

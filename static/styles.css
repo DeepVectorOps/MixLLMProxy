@@ -89,8 +89,8 @@ strong { color: #e6edf3; font-weight: 600; }
 .rate-limit-name code { color: #58a6ff; font-size: 13px; }
 .limit-bar { margin-bottom: 6px; }
 .limit-bar:last-child { margin-bottom: 0; }
-.limit-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: #8b949e; margin-bottom: 3px; }
-.limit-bar-nums { color: #c9d1d9; }
+.limit-bar-label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+.limit-bar-nums { color: #c9d1d9; font-size: 18px; }
 .limit-bar-track { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; height: 8px; overflow: hidden; }
 .limit-bar-fill { height: 100%; background: #58a6ff; border-radius: 5px; transition: width .2s; }
 .limit-bar-fill.bar-warn { background: #d29922; }

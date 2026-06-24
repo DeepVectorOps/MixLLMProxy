@@ -4,6 +4,7 @@
 module Common
   ( icon
   , showT
+  , showWithCommas
   , maybeDash
   , faviconSvg
   , baseHead
@@ -20,9 +21,13 @@ import qualified Data.Text.Lazy as TL
 import Web.Scotty (ActionM, queryParam, formParam, catch)
 import Control.Exception (SomeException)
 import Data.Maybe (maybe)
+import Data.Text.Format.Numbers (prettyF, PrettyCfg(..))
 
 showT :: Show a => a -> T.Text
 showT = T.pack . show
+
+showWithCommas :: Real a => a -> T.Text
+showWithCommas = prettyF (PrettyCfg 0 (Just ',') '.') . (realToFrac :: Real a => a -> Double)
 
 maybeDash :: Show a => Maybe a -> T.Text
 maybeDash = maybe "-" showT

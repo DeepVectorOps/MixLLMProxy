@@ -28,6 +28,7 @@ library:
     - wai
     - wai-middleware-static
     - wai-extra
+    - format-numbers
 
 executables:
   app:
@@ -54,6 +55,7 @@ executables:
       - wai
       - wai-middleware-static
       - wai-extra
+      - format-numbers
 
 tests:
   spec:
