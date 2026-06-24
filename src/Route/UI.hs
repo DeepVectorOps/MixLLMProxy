@@ -124,15 +124,15 @@ sortableHeader targetCol currentSortBy currentSortDir currentSearchField current
                     then if currentSortDir == "asc" then " ▲" else " ▼"
                     else ""
   th_ $ do
-    a_ [href_ queryStr, style_ "color: inherit; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;"] $ do
+    a_ [href_ queryStr, class_ "sort-link"] $ do
       content
       toHtml indicator
 
 searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
 searchForm searchField searchQuery sortBy sortDir duration =
-  div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 18px; margin: 16px auto; max-width: 700px;"] $ do
-    form_ [action_ "/ui/", method_ "get", style_ "display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap;"] $ do
-      select_ [name_ "search_field", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; cursor: pointer;"] $ do
+  div_ [class_ "search-card"] $ do
+    form_ [action_ "/ui/", method_ "get", class_ "search-form"] $ do
+      select_ [name_ "search_field", class_ "input-select"] $ do
         optionSelected "any" "Any text field"
         optionSelected "model" "Model"
         optionSelected "alias" "Alias"
@@ -140,23 +140,21 @@ searchForm searchField searchQuery sortBy sortDir duration =
         optionSelected "resp_body" "Response Body"
         optionSelected "endpoint" "Endpoint"
         optionSelected "status" "Status"
-      input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 280px;"]
-      span_ [style_ "color: #8b949e; font-size: 13px; margin-left: 4px;"] (icon "ph-clock" >> " Age:")
-      input_ [type_ "text", name_ "duration", value_ duration, placeholder_ "All time (e.g. 10m, 1h)", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 160px;"]
+      input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", class_ "input", style_ "width: 280px;"]
+      span_ [class_ "label-text"] (icon "ph-clock" >> " Age:")
+      input_ [type_ "text", name_ "duration", value_ duration, placeholder_ "All time (e.g. 10m, 1h)", class_ "input", style_ "width: 160px;"]
       input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
       input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
-      button_ [type_ "submit", style_ "background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 6px 14px; font-size: 13px; cursor: pointer; font-weight: 600;"] "Filter"
-      a_ [href_ "/ui/", class_ "btn-cancel", style_ "text-decoration: none; line-height: 1.8; text-align: center; font-size: 13px;"] "Clear"
-    div_ [style_ "display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 8px; font-size: 12px; color: #8b949e;"] $ do
+      button_ [type_ "submit", class_ "btn"] "Filter"
+      a_ [href_ "/ui/", class_ "btn-cancel"] "Clear"
+    div_ [class_ "quick-age-row"] $ do
       span_ "Quick age:"
       let quickLink :: T.Text -> T.Text -> Html ()
           quickLink label dur =
             let active = duration == dur
-                bg = if active then "#58a6ff" else "#21262d"
-                fg = if active then "#0d1117" else "#c9d1d9"
-                border = if active then "1px solid #58a6ff" else "1px solid #30363d"
+                linkClass = if active then "quick-link quick-link-active" else "quick-link quick-link-inactive"
                 url = makeUrl 1 sortBy sortDir searchField searchQuery dur
-            in a_ [href_ url, style_ ("background: " <> bg <> "; color: " <> fg <> "; border: " <> border <> "; border-radius: 4px; padding: 2px 8px; text-decoration: none; font-weight: 500; transition: all 0.2s;")] (toHtml label)
+            in a_ [href_ url, class_ linkClass] (toHtml label)
       quickLink "All" ""
       quickLink "10m" "10m"
       quickLink "1h" "1h"
@@ -174,49 +172,49 @@ settingsSection s = do
       mSlow = gsSlowLimit s
       isSlowActive = case mSlow of { Just _ -> True; Nothing -> False }
       slowValText = case mSlow of { Just v -> showT v; Nothing -> "2.0" }
-  div_ [style_ "display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; justify-content: center;"] $ do
+  div_ [class_ "settings-row"] $ do
     
     -- Row 1: Global Pause
-    div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; min-width: 320px; max-width: 500px;"] $ do
-      div_ [style_ "display: flex; align-items: center; gap: 8px;"] $ do
-        span_ [style_ "color: #58a6ff; font-size: 14px; display: inline-flex; align-items: center;"] (icon "ph-power")
-        strong_ [style_ "font-size: 13px; color: #e6edf3;"] "Global Pause"
+    div_ [class_ "settings-card settings-card-pause"] $ do
+      div_ [class_ "flex-row"] $ do
+        span_ [class_ "icon-blue"] (icon "ph-power")
+        strong_ "Global Pause"
         if paused
-          then span_ [style_ "background: #da3633; color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;"] "PAUSED"
-          else span_ [style_ "background: #238636; color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;"] "ACTIVE"
-        span_ [style_ "font-size: 12px; color: #8b949e; margin-left: 8px;"] "— Temporarily pause all proxy traffic"
+          then span_ [class_ "badge badge-red"] "PAUSED"
+          else span_ [class_ "badge badge-green"] "ACTIVE"
+        span_ [class_ "desc-text"] "— Temporarily pause all proxy traffic"
       
-      form_ [action_ "/ui/global-settings/toggle-pause", method_ "post", style_ "margin: 0;"] $ do
+      form_ [action_ "/ui/global-settings/toggle-pause", method_ "post", class_ "form-inline"] $ do
         if paused
-          then button_ [type_ "submit", style_ "background: #238636; border: none; border-radius: 6px; color: white; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"] (icon "ph-play" >> " Resume API")
-          else button_ [type_ "submit", style_ "background: #da3633; border: none; border-radius: 6px; color: white; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;"] (icon "ph-pause" >> " Pause API")
+          then button_ [type_ "submit", class_ "btn-green"] (icon "ph-play" >> " Resume API")
+          else button_ [type_ "submit", class_ "btn-red"] (icon "ph-pause" >> " Pause API")
 
     -- Row 2: Speed Limiter
-    div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; min-width: 380px; max-width: 540px;"] $ do
-      div_ [style_ "display: flex; align-items: center; gap: 8px;"] $ do
-        span_ [style_ "color: #e3b341; font-size: 14px; display: inline-flex; align-items: center;"] (icon "ph-gauge")
-        strong_ [style_ "font-size: 13px; color: #e6edf3;"] "Speed Limiter"
+    div_ [class_ "settings-card settings-card-speed"] $ do
+      div_ [class_ "flex-row"] $ do
+        span_ [class_ "icon-yellow"] (icon "ph-gauge")
+        strong_ "Speed Limiter"
         if isSlowActive
-          then span_ [style_ "background: #d29922; color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;"] (toHtml ("SLOWED (" <> slowValText <> "/s)"))
-          else span_ [style_ "background: #238636; color: white; border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;"] "UNLIMITED"
-        span_ [style_ "font-size: 12px; color: #8b949e; margin-left: 8px;"] "— Enforce rate limits across all model endpoints"
+          then span_ [class_ "badge badge-yellow"] (toHtml ("SLOWED (" <> slowValText <> "/s)"))
+          else span_ [class_ "badge badge-green"] "UNLIMITED"
+        span_ [class_ "desc-text"] "— Enforce rate limits across all model endpoints"
 
-      div_ [style_ "display: flex; align-items: center; gap: 6px; flex-wrap: wrap;"] $ do
-        form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", style_ "margin: 0; display: flex; align-items: center; gap: 4px;"] $ do
-          input_ [type_ "text", name_ "slow_limit", value_ (if isSlowActive then slowValText else ""), placeholder_ "2.0", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 4px 8px; color: #c9d1d9; font-size: 12px; width: 60px; text-align: center;"]
-          span_ [style_ "font-size: 12px; color: #8b949e; margin-right: 4px;"] "req/s"
-          button_ [type_ "submit", style_ "background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer;"] "Set Limit"
+      div_ [class_ "flex-row-gap6"] $ do
+        form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", class_ "flex-form"] $ do
+          input_ [type_ "text", name_ "slow_limit", value_ (if isSlowActive then slowValText else ""), placeholder_ "2.0", class_ "input-sm"]
+          span_ [class_ "label-sm", style_ "margin-right: 4px;"] "req/s"
+          button_ [type_ "submit", class_ "btn-sm"] "Set Limit"
         
         if isSlowActive
-          then form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", style_ "margin: 0; display: inline;"] $ do
+          then form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", class_ "btn-ghost"] $ do
             input_ [type_ "hidden", name_ "slow_limit", value_ ""]
-            button_ [type_ "submit", style_ "background: #da3633; border: none; border-radius: 6px; color: white; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer;"] "Disable"
+            button_ [type_ "submit", class_ "btn-red"] "Disable"
           else ""
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> GlobalSettings -> Html ()
 page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration settings = do
     div_ [class_ "header-row"] $ do
-      h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
+      h1_ $ a_ [href_ "/ui/"] "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
       a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let base = fromMaybe "localhost" (TL.toStrict <$> host)
