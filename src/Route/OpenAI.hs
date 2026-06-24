@@ -19,43 +19,76 @@ import Data.String.Conversions (cs)
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (SomeException)
 
-import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Data.Time.Clock (getCurrentTime, diffUTCTime, addUTCTime)
 import Database.PostgreSQL.Simple (Connection)
-import AppEnv (AppEnv, withPool)
+import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
 import DB (insertPendingRequest, updateRequest, getAliasByName, getAliasUsage24h, LlmAlias(..))
 import Common (showT)
+import Data.IORef (readIORef, atomicModifyIORef')
+import Network.HTTP.Types.Status (status429, status503)
+
+checkGlobalRateLimit :: AppEnv -> IO (Maybe T.Text)
+checkGlobalRateLimit env = do
+  settings <- readIORef (envSettings env)
+  if gsPaused settings
+    then pure (Just "API is globally paused")
+    else case gsSlowLimit settings of
+      Nothing -> pure Nothing
+      Just limit -> do
+        now <- getCurrentTime
+        let oneSecAgo = addUTCTime (-1) now
+        blocked <- atomicModifyIORef' (envRequestTimes env) $ \times ->
+          let recent = filter (> oneSecAgo) times
+              count = length recent
+          in if fromIntegral count >= limit
+               then (recent, True)
+               else (now : recent, False)
+        if blocked
+          then pure (Just $ "Global rate limit exceeded (" <> showT limit <> " reqs/sec)")
+          else pure Nothing
 
 openAIRoutes :: AppEnv -> ScottyM ()
 openAIRoutes env = do
   post "/api/openai/v1/chat/completions" $ do
-    reqBody <- body
-    let reqModel = extractModel reqBody
-    mAlias <- case reqModel of
-      Just modelName -> liftIO $ withPool env $ \conn -> getAliasByName conn modelName
-      Nothing -> pure Nothing
-    case mAlias of
-      Just alias -> do
-        mBlocked <- liftIO $ withPool env $ \conn -> checkRateLimit conn alias
-        case mBlocked of
-          Just errMsg -> do
-            status status429
-            setHeader "Content-Type" "application/json"
-            raw $ A.encode $ A.object
-              [ "error" A..= errMsg
-              , "type" A..= ("rate_limit_exceeded" :: T.Text)
-              ]
-          Nothing -> do
-            let overriddenBody = case A.decode reqBody of
-                  Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
-                  _ -> reqBody
-            let endpoint = "/api/openai/v1/chat/completions (" <> laName alias <> ")"
-            let reqText = Just $ cs overriddenBody
-            rid <- liftIO $ withPool env $ \conn ->
-              insertPendingRequest conn endpoint "POST" reqText (Just (laModel alias)) (Just (laName alias))
-            proxyAndLog env rid (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
+    mGlobalBlocked <- liftIO $ checkGlobalRateLimit env
+    case mGlobalBlocked of
+      Just errMsg -> do
+        let isPaused = errMsg == "API is globally paused"
+        status (if isPaused then status503 else status429)
+        setHeader "Content-Type" "application/json"
+        raw $ A.encode $ A.object
+          [ "error" A..= errMsg
+          , "type" A..= (if isPaused then ("api_paused" :: T.Text) else ("rate_limit_exceeded" :: T.Text))
+          ]
       Nothing -> do
-        status status400
-        json $ A.object ["error" A..= ("no alias found for model: " <> maybe "(missing)" id reqModel)]
+        reqBody <- body
+        let reqModel = extractModel reqBody
+        mAlias <- case reqModel of
+          Just modelName -> liftIO $ withPool env $ \conn -> getAliasByName conn modelName
+          Nothing -> pure Nothing
+        case mAlias of
+          Just alias -> do
+            mBlocked <- liftIO $ withPool env $ \conn -> checkRateLimit conn alias
+            case mBlocked of
+              Just errMsg -> do
+                status status429
+                setHeader "Content-Type" "application/json"
+                raw $ A.encode $ A.object
+                  [ "error" A..= errMsg
+                  , "type" A..= ("rate_limit_exceeded" :: T.Text)
+                  ]
+              Nothing -> do
+                let overriddenBody = case A.decode reqBody of
+                      Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj
+                      _ -> reqBody
+                let endpoint = "/api/openai/v1/chat/completions (" <> laName alias <> ")"
+                let reqText = Just $ cs overriddenBody
+                rid <- liftIO $ withPool env $ \conn ->
+                  insertPendingRequest conn endpoint "POST" reqText (Just (laModel alias)) (Just (laName alias))
+                proxyAndLog env rid (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
+          Nothing -> do
+            status status400
+            json $ A.object ["error" A..= ("no alias found for model: " <> maybe "(missing)" id reqModel)]
 
 checkRateLimit :: Connection -> LlmAlias -> IO (Maybe T.Text)
 checkRateLimit conn alias = do

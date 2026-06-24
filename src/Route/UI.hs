@@ -5,9 +5,11 @@ module Route.UI (uiRoutes) where
 
 import Web.Scotty
 import Lucid
-import AppEnv (AppEnv, withPool)
+import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
 import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequests, getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, getAliasesWithUsage)
-import Common (icon, showT, maybeDash, basePage, queryParamDefault)
+import Data.IORef (readIORef, modifyIORef')
+import Text.Read (readMaybe)
+import Common (icon, showT, maybeDash, basePage, queryParamDefault, aliasBadge)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -36,7 +38,7 @@ rateLimitCard u = do
       reqCount = auRequestCount u
       tokCount = auTokenCount u
   div_ [class_ "rate-limit-card"] $ do
-    div_ [class_ "rate-limit-name"] (code_ (toHtml (laName a)))
+    div_ [class_ "rate-limit-name"] (aliasBadge (laName a))
     limitBar "Requests" reqCount (laDailyRequestLimit a)
     limitBar "Tokens" tokCount (laDailyTokenLimit a)
 
@@ -76,8 +78,9 @@ uiRoutes env = do
       countRequestsFiltered conn searchField searchQuery duration
     let totalPages = max 1 ((total + perPage - 1) `div` perPage)
     aliasUsages <- liftIO $ withPool env $ \conn -> getAliasesWithUsage conn
+    settings <- liftIO $ readIORef (envSettings env)
     host <- header "Host"
-    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages total aliasUsages sortBy sortDir searchField searchQuery duration
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages total aliasUsages sortBy sortDir searchField searchQuery duration settings
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
@@ -86,6 +89,16 @@ uiRoutes env = do
       Nothing -> html "not found"
   post "/ui/truncate" $ do
     liftIO $ withPool env $ \conn -> truncateRequests conn
+    redirect "/ui/"
+  post "/ui/global-settings/toggle-pause" $ do
+    liftIO $ modifyIORef' (envSettings env) $ \s -> s { gsPaused = not (gsPaused s) }
+    redirect "/ui/"
+  post "/ui/global-settings/set-slow-limit" $ do
+    limitStr :: T.Text <- queryParamDefault "slow_limit" ""
+    let limit = if T.null (T.strip limitStr)
+                  then Nothing
+                  else readMaybe (T.unpack limitStr)
+    liftIO $ modifyIORef' (envSettings env) $ \s -> s { gsSlowLimit = limit }
     redirect "/ui/"
 
 makeUrl :: Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
@@ -153,8 +166,39 @@ searchForm searchField searchQuery sortBy sortDir duration =
       let attrs = [value_ val] ++ [selected_ "selected" | searchField == val]
       in option_ attrs (toHtml label)
 
-page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
-page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration = do
+settingsSection :: GlobalSettings -> Html ()
+settingsSection s = do
+  let paused = gsPaused s
+      mSlow = gsSlowLimit s
+      isSlowActive = case mSlow of { Just _ -> True; Nothing -> False }
+      slowValText = case mSlow of { Just v -> showT v; Nothing -> "2.0" }
+  div_ [style_ "background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 18px; margin: 16px 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;"] $ do
+    div_ [style_ "display: flex; align-items: center; gap: 8px;"] $ do
+      span_ [style_ "color: #58a6ff; font-size: 16px; display: inline-flex; align-items: center;"] (icon "ph-sliders")
+      strong_ [style_ "font-size: 14px; color: #e6edf3;"] "Global Controls:"
+      if paused
+        then span_ [style_ "background: #da3633; color: white; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase;"] "PAUSED"
+        else if isSlowActive
+          then span_ [style_ "background: #d29922; color: white; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase;"] (toHtml ("SLOWED (" <> slowValText <> "/s)"))
+          else span_ [style_ "background: #238636; color: white; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase;"] "ACTIVE"
+
+    div_ [style_ "display: flex; align-items: center; gap: 16px; flex-wrap: wrap;"] $ do
+      form_ [action_ "/ui/global-settings/toggle-pause", method_ "post", style_ "margin: 0; display: flex; align-items: center;"] $ do
+        if paused
+          then button_ [type_ "submit", class_ "btn-save", style_ "padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: #238636; border: none; border-radius: 6px; color: white;"] (icon "ph-play" >> " Resume API")
+          else button_ [type_ "submit", class_ "btn-danger", style_ "padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; background: #da3633; border: none; border-radius: 6px; color: white;"] (icon "ph-pause" >> " Pause API")
+
+      form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", style_ "margin: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8b949e;"] $ do
+        span_ "Rate Limit:"
+        input_ [type_ "text", name_ "slow_limit", value_ (if isSlowActive then slowValText else ""), placeholder_ "e.g. 2.0", style_ "background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 6px 10px; color: #c9d1d9; font-size: 13px; width: 80px;"]
+        span_ "req/s"
+        button_ [type_ "submit", class_ "btn-save", style_ "padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;"] "Set Limit"
+        if isSlowActive
+          then button_ [type_ "submit", name_ "slow_limit", value_ "", class_ "btn-danger", style_ "padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer; background: #da3633; border: none; border-radius: 6px; color: white;"] "Disable"
+          else ""
+
+page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> GlobalSettings -> Html ()
+page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration settings = do
     div_ [class_ "header-row"] $ do
       h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
@@ -165,6 +209,7 @@ page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir se
       form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
     rateLimitSection aliasUsages
+    settingsSection settings
     searchForm searchField searchQuery sortBy sortDir duration
     pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
     table_ [class_ "requests"] $ do
@@ -195,7 +240,7 @@ requestRow r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrI
   td_ [class_ "len"] (toHtml (maybeDash (fmap T.length (lrRequestBody r))))
   td_ [class_ "len"] (toHtml (maybeDash (fmap T.length (lrResponseBody r))))
   td_ [class_ "model"] (toHtml (fromMaybe "-" (lrModel r)))
-  td_ [class_ "alias"] (toHtml (fromMaybe "-" (lrAliasName r)))
+  td_ [class_ "alias"] (maybe "-" aliasBadge (lrAliasName r))
   td_ [class_ "len"] (toHtml (maybeDash (lrPromptTokens r)))
   td_ [class_ "len"] (toHtml (maybeDash (lrCompletionTokens r)))
   td_ [class_ "len"] (toHtml (maybeDash (lrTotalTokens r)))
@@ -218,7 +263,7 @@ detailPage r = do
       detailCell "ph-arrow-down-up" "Method" (toHtml (lrMethod r))
       detailCell "ph-link" "Endpoint" (toHtml (lrEndpoint r))
       detailCell "ph-cpu" "Model" (toHtml (fromMaybe "-" (lrModel r)))
-      detailCell "ph-tag" "Alias" (toHtml (fromMaybe "-" (lrAliasName r)))
+      detailCell "ph-tag" "Alias" (maybe "-" aliasBadge (lrAliasName r))
       detailCell "ph-arrow-line-down" "Prompt tokens" (toHtml (maybeDash (lrPromptTokens r)))
       detailCell "ph-arrow-line-up" "Completion tokens" (toHtml (maybeDash (lrCompletionTokens r)))
       detailCell "ph-equals" "Total tokens" (toHtml (maybeDash (lrTotalTokens r)))

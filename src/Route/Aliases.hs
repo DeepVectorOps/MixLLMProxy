@@ -7,7 +7,7 @@ import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
 import DB (LlmAlias(..), getAliases, getAliasById, insertAlias, updateAlias, deleteAlias)
-import Common (icon, showT, basePage)
+import Common (icon, showT, basePage, aliasBadge)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Data.Maybe (fromMaybe, isJust, maybe, catMaybes, listToMaybe)
@@ -180,7 +180,7 @@ aliasesInfoPage host = basePage "MixLLMProxy — Aliases Info" $ do
 
 aliasRow :: LlmAlias -> Html ()
 aliasRow a = tr_ $ do
-  td_ [class_ "alias-name"] (code_ (toHtml (laName a)))
+  td_ [class_ "alias-name"] (aliasBadge (laName a))
   td_ [class_ "alias-url"] (code_ (toHtml (laEndpointUrl a)))
   td_ [class_ "alias-model"] (toHtml (laModel a))
   td_ [class_ "alias-limits"] (toHtml (formatLimits a))

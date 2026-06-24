@@ -9,6 +9,7 @@ module Common
   , baseHead
   , basePage
   , queryParamDefault
+  , aliasBadge
   ) where
 
 import Lucid
@@ -49,3 +50,29 @@ basePage titleText bodyContent = doctype_ >> html_ [lang_ "en"] (do
 
 queryParamDefault :: Parsable a => TL.Text -> a -> ActionM a
 queryParamDefault key fallback = queryParam key `catch` (\(_ :: SomeException) -> pure fallback)
+
+hashText :: T.Text -> Int
+hashText = T.foldl' (\h c -> h * 33 + fromEnum c) 5381
+
+aliasColor :: T.Text -> T.Text
+aliasColor name =
+  let colors =
+        [ "hsl(210, 85%, 45%)" -- Blue
+        , "hsl(120, 70%, 35%)" -- Green
+        , "hsl(25,  85%, 45%)" -- Orange
+        , "hsl(280, 75%, 45%)" -- Purple
+        , "hsl(350, 75%, 45%)" -- Red
+        , "hsl(45,  80%, 40%)" -- Yellow
+        , "hsl(320, 80%, 45%)" -- Pink
+        , "hsl(180, 80%, 35%)" -- Teal
+        , "hsl(90,  75%, 35%)" -- Lime
+        , "hsl(240, 70%, 45%)" -- Indigo
+        ]
+      idx = (hashText name) `mod` length colors
+  in colors !! idx
+
+aliasBadge :: T.Text -> Html ()
+aliasBadge name =
+  let color = aliasColor name
+      styleVal = "background: " <> color <> "; color: #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; font-size: 11px; display: inline-block;"
+  in span_ [style_ styleVal] (toHtml name)
