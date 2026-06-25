@@ -92,8 +92,9 @@ strong { color: #e6edf3; font-weight: 600; font-size: 13px; }
 .card-edit-btn:hover { opacity: 1; color: #58a6ff; }
 .limit-bar { margin-bottom: 6px; }
 .limit-bar:last-child { margin-bottom: 0; }
-.limit-bar-label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #8b949e; margin-bottom: 4px; align-items: center; }
-.limit-bar-nums { color: #c9d1d9; font-size: 18px; }
+.limit-bar-label { display: flex; flex-direction: row; gap: 6px; font-size: 11px; color: #8b949e; margin-bottom: 4px; align-items: baseline; justify-content: center; }
+.limit-bar-name { flex-shrink: 0; min-width: 4.5em; text-align: right; }
+.limit-bar-nums { color: #c9d1d9; font-size: 14px; white-space: nowrap; }
 .limit-bar-track { background: #0d1117; border: 1px solid #21262d; border-radius: 6px; height: 8px; overflow: hidden; }
 .limit-bar-fill { height: 100%; background: #58a6ff; border-radius: 5px; transition: width .2s; }
 .limit-bar-fill.bar-warn { background: #d29922; }

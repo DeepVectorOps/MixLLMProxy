@@ -60,14 +60,14 @@ limitBar label count mlim = case mlim of
         titleTxt = showWithCommas count <> " / " <> showWithCommas lim
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
-        span_ (toHtml label)
+        span_ [class_ "limit-bar-name"] (toHtml label)
         span_ [class_ "limit-bar-nums", title_ titleTxt] (toHtml numsTxt)
       div_ [class_ "limit-bar-track"] $
         div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT widthPct <> "%")] ""
   _ -> do
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
-        span_ (toHtml label)
+        span_ [class_ "limit-bar-name"] (toHtml label)
         span_ [class_ "limit-bar-nums"] (toHtml (showCompact count <> " / ∞"))
 
 uiRoutes :: AppEnv -> ScottyM ()
