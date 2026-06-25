@@ -7,7 +7,7 @@ import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
 import DB (LlmAlias(..), getAliases, getAliasById, insertAlias, updateAlias, deleteAlias)
-import Common (icon, showT, basePage, aliasBadge)
+import Common (icon, showT, basePage, aliasBadge, endpointBox)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Data.Maybe (fromMaybe, isJust, maybe, catMaybes, listToMaybe)
@@ -39,9 +39,6 @@ validateAliasForm name url key model = T.null name || T.null url || T.null key |
 aliasesRoutes :: AppEnv -> ScottyM ()
 aliasesRoutes env = do
   get "/ui/aliases" $ renderAliases env Nothing T.empty T.empty T.empty T.empty Nothing Nothing Nothing
-  get "/ui/aliases/info" $ do
-    host <- fromMaybe "localhost" . fmap TL.toStrict <$> header "Host"
-    html $ renderText $ aliasesInfoPage host
 
   post "/ui/aliases/create" $ do
     name <- formParam "name"
@@ -99,9 +96,8 @@ aliasesPage host aliases editId nameFilled urlFilled keyFilled modelFilled token
     div_ [class_ "header-row"] $ do
       h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
-      a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let endpoint = T.concat ["http://", host, "/api/openai/v1/chat/completions"]
-      code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
+      endpointBox endpoint
     p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
 
     div_ [class_ "form-section"] $ do
@@ -150,38 +146,6 @@ aliasesPage host aliases editId nameFilled urlFilled keyFilled modelFilled token
     script_ [type_ "text/javascript"] $ T.unlines
       [ "function toggleKey(){var i=document.getElementById('key'),b=document.getElementById('toggleKeyBtn');if(i.type==='password'){i.type='text';b.innerHTML='<i class=\"ph ph-eye-slash\"></i>'}else{i.type='password';b.innerHTML='<i class=\"ph ph-eye\"></i>'}}"
       ]
-
-aliasesInfoPage :: T.Text -> Html ()
-aliasesInfoPage host = basePage "MixLLMProxy — Aliases Info" $ do
-  div_ [class_ "container"] $ do
-    div_ [class_ "header-row"] $ do
-      h1_ (icon "info" >> " Alias Info")
-    p_ [class_ "subtitle"] "How aliases work"
-
-    div_ [class_ "info-section"] $ do
-      p_ $ do
-        "Aliases let you map model names to different LLM backends. Create an alias with a name, endpoint URL, API key, and model — then use that name as the model in your requests."
-      h2_ "Example"
-      p_ $ do
-        "Create an alias named "
-        strong_ "test-bob"
-        " pointing to "
-        strong_ "opencode.ai"
-        " with model "
-        strong_ "deepseek-v4-flash"
-        ". Then:"
-      pre_ [class_ "code-block"] $ code_ (toHtml $ T.intercalate "\n"
-        [ "curl -X POST http://" <> host <> "/api/openai/v1/chat/completions \\"
-        , "  -H \"Content-Type: application/json\" \\"
-        , "  -d '{\"model\":\"test-bob\",\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}'"
-        ])
-      p_ $ do
-        "Proxies to "
-        strong_ "https://opencode.ai/zen/go/v1/chat/completions"
-        " with model "
-        strong_ "deepseek-v4-flash"
-        "."
-      p_ "No matching alias gives a 400 error."
 
 aliasRow :: LlmAlias -> Html ()
 aliasRow a = tr_ $ do

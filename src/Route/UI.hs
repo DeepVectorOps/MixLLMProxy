@@ -6,11 +6,11 @@ module Route.UI (uiRoutes) where
 import Web.Scotty
 import Lucid
 import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
-import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, getAliasesWithUsage)
+import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, truncateRequestsOlderThan, parseDuration, getAliasesWithUsage)
 import ChartJson (chartPollSeconds, chartSubtitle, loadChartJson)
 import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
-import Common (icon, showT, showWithCommas, maybeDash, basePage, queryParamDefault, formParamDefault, aliasBadge)
+import Common (icon, showT, showWithCommas, showCompact, maybeDash, basePage, queryParamDefault, formParamDefault, aliasBadge, endpointBox)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -56,17 +56,19 @@ limitBar label count mlim = case mlim of
         pctTxt = showT pct <> "%"
         widthPct = min 100 pct
         barClass = if pct >= 100 then "bar-full" else if pct >= 80 then "bar-warn" else ""
+        numsTxt = pctTxt <> " · " <> showCompact count <> "/" <> showCompact lim
+        titleTxt = showWithCommas count <> " / " <> showWithCommas lim
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ (toHtml label)
-        span_ [class_ "limit-bar-nums"] (toHtml (showWithCommas count <> " / " <> showWithCommas lim <> "  (" <> pctTxt <> ")"))
+        span_ [class_ "limit-bar-nums", title_ titleTxt] (toHtml numsTxt)
       div_ [class_ "limit-bar-track"] $
         div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT widthPct <> "%")] ""
   _ -> do
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ (toHtml label)
-        span_ [class_ "limit-bar-nums"] (toHtml (showWithCommas count <> " / ∞"))
+        span_ [class_ "limit-bar-nums"] (toHtml (showCompact count <> " / ∞"))
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
@@ -100,6 +102,10 @@ uiRoutes env = do
       Nothing -> html "not found"
   post "/ui/truncate" $ do
     liftIO $ withPool env $ \conn -> truncateRequests conn
+    redirect "/ui/"
+  post "/ui/truncate-older" $ do
+    let interval = fromMaybe "1 hours" (parseDuration "1h")
+    liftIO $ withPool env $ \conn -> truncateRequestsOlderThan conn interval
     redirect "/ui/"
   post "/ui/global-settings/toggle-pause" $ do
     liftIO $ modifyIORef' (envSettings env) $ \s -> s { gsPaused = not (gsPaused s) }
@@ -141,21 +147,22 @@ searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
 searchForm searchField searchQuery sortBy sortDir duration =
   div_ [class_ "search-card"] $ do
     form_ [action_ "/ui/", method_ "get", class_ "search-form"] $ do
-      select_ [name_ "search_field", class_ "input-select"] $ do
-        optionSelected "any" "Any text field"
-        optionSelected "model" "Model"
-        optionSelected "alias" "Alias"
-        optionSelected "req_body" "Request Body"
-        optionSelected "resp_body" "Response Body"
-        optionSelected "endpoint" "Endpoint"
-        optionSelected "status" "Status"
-      input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", class_ "input", style_ "width: 280px;"]
-      span_ [class_ "label-text"] (icon "ph-clock" >> " Age:")
-      input_ [type_ "text", name_ "duration", value_ duration, placeholder_ "All time (e.g. 10m, 1h)", class_ "input", style_ "width: 160px;"]
-      input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
-      input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
-      button_ [type_ "submit", class_ "btn"] "Filter"
-      a_ [href_ "/ui/", class_ "btn-cancel"] "Clear"
+      div_ [class_ "search-fields-row"] $ do
+        select_ [name_ "search_field", class_ "input-select"] $ do
+          optionSelected "any" "Any text field"
+          optionSelected "model" "Model"
+          optionSelected "alias" "Alias"
+          optionSelected "req_body" "Request Body"
+          optionSelected "resp_body" "Response Body"
+          optionSelected "endpoint" "Endpoint"
+          optionSelected "status" "Status"
+        input_ [type_ "text", name_ "search_query", value_ searchQuery, placeholder_ "Search query...", class_ "input search-query-input"]
+        span_ [class_ "label-text"] (icon "ph-clock" >> " Age:")
+        input_ [type_ "text", name_ "duration", value_ duration, placeholder_ "All time (e.g. 10m, 1h)", class_ "input search-age-input"]
+        input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
+        input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
+        button_ [type_ "submit", class_ "btn"] "Filter"
+        a_ [href_ "/ui/", class_ "btn-cancel"] "Clear"
     div_ [class_ "quick-age-row"] $ do
       span_ "Quick age:"
       let quickLink :: T.Text -> T.Text -> Html ()
@@ -225,12 +232,14 @@ page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir se
     div_ [class_ "header-row"] $ do
       h1_ $ a_ [href_ "/ui/"] "🔭 MixLLMProxy"
       a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
-      a_ [href_ "/ui/aliases/info", class_ "nav-btn"] (icon "info" >> " Info")
       let base = fromMaybe "localhost" (TL.toStrict <$> host)
           endpoint = T.concat ["http://", base, "/api/openai/v1/chat/completions"]
-      code_ [class_ "endpoint"] (icon "ph-link" >> " Endpoint: " >> toHtml endpoint)
-      form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
-        button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
+      endpointBox endpoint
+      div_ [class_ "truncate-actions"] $ do
+        form_ [action_ "/ui/truncate-older", method_ "post", class_ "form-inline"] $
+          button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
+        form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
+          button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
     rateLimitSection aliasUsages
     settingsSection settings
     searchForm searchField searchQuery sortBy sortDir duration

@@ -5,6 +5,7 @@ module Common
   ( icon
   , showT
   , showWithCommas
+  , showCompact
   , maybeDash
   , faviconSvg
   , baseHead
@@ -13,6 +14,7 @@ module Common
   , formParamDefault
   , aliasBadge
   , aliasColor
+  , endpointBox
   ) where
 
 import Lucid
@@ -29,6 +31,19 @@ showT = T.pack . show
 
 showWithCommas :: Real a => a -> T.Text
 showWithCommas = prettyF (PrettyCfg 0 (Just ',') '.') . (realToFrac :: Real a => a -> Double)
+
+showCompact :: (Integral a, Show a) => a -> T.Text
+showCompact n
+  | n >= 1000000 = fmtScaled n 1000000 "M"
+  | n >= 10000   = fmtScaled n 1000 "k"
+  | otherwise      = showT n
+  where
+    fmtScaled :: Integral a => a -> a -> T.Text -> T.Text
+    fmtScaled val scale suffix =
+      let tenths = fromIntegral ((val * 10 + scale `div` 2) `div` scale) :: Int
+          whole = tenths `div` 10
+          frac = tenths `mod` 10
+      in if frac == 0 then showT whole <> suffix else showT whole <> "." <> showT frac <> suffix
 
 maybeDash :: Show a => Maybe a -> T.Text
 maybeDash = maybe "-" showT
@@ -84,3 +99,9 @@ aliasBadge name =
   let color = aliasColor name
       styleVal = "background: " <> color <> "; color: #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; font-size: 11px; display: inline-block;"
   in span_ [style_ styleVal] (toHtml name)
+
+endpointBox :: T.Text -> Html ()
+endpointBox url =
+  div_ [class_ "endpoint-box"] $ do
+    span_ [class_ "endpoint-label"] (icon "ph-link" >> " Endpoint:")
+    code_ [class_ "endpoint-url"] (toHtml url)

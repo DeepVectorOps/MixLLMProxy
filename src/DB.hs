@@ -13,6 +13,7 @@ module DB
   , countRequests
   , countRequestsFiltered
   , truncateRequests
+  , truncateRequestsOlderThan
   , LlmRequest(..)
   , LlmAlias(..)
   , getAliases
@@ -412,3 +413,7 @@ getAliasRequestChartData conn windowMin bucketSec =
 truncateRequests :: Connection -> IO ()
 truncateRequests conn =
   void $ execute_ conn "TRUNCATE TABLE llm_requests"
+
+truncateRequestsOlderThan :: Connection -> Text -> IO ()
+truncateRequestsOlderThan conn interval =
+  void $ execute conn "DELETE FROM llm_requests WHERE created_at < NOW() - ?::interval" (Only interval)
