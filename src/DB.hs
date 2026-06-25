@@ -24,6 +24,8 @@ module DB
   , updateAlias
   , deleteAlias
   , getAliasUsage24h
+  , getAliasRequestChartData
+  , AliasChartRow(..)
   , parseDuration
   ) where
 
@@ -85,6 +87,16 @@ data AliasUsage = AliasUsage
 
 instance FromRow AliasUsage where
   fromRow = AliasUsage <$> fromRow <*> field <*> field
+
+data AliasChartRow = AliasChartRow
+  { acrAliasId :: Int
+  , acrAliasName :: Text
+  , acrBucket :: UTCTime
+  , acrCount :: Int
+  } deriving (Show, Generic)
+
+instance FromRow AliasChartRow where
+  fromRow = AliasChartRow <$> field <*> field <*> field <*> field
 
 requestColumns :: Query
 requestColumns = fromString $ cs [text|
@@ -361,6 +373,40 @@ getAliasesWithUsage conn =
       GROUP BY alias_name
     ) r ON r.alias_name = a.name
     ORDER BY COALESCE(r.req_count, 0) DESC, a.created_at DESC
+  |])
+
+getAliasRequestChartData :: Connection -> Int -> Int -> IO [AliasChartRow]
+getAliasRequestChartData conn windowMin bucketSec =
+  let secTxt = T.pack (show bucketSec)
+      winTxt = T.pack (show windowMin)
+  in query_ conn (fromString $ cs [text|
+    WITH cfg AS (
+      SELECT ${secTxt}::numeric AS sec, ${winTxt}::int AS win
+    ),
+    bounds AS (
+      SELECT
+        to_timestamp(floor(extract(epoch FROM NOW() - c.win * INTERVAL '1 minute') / c.sec) * c.sec) AS start_ts,
+        to_timestamp(floor(extract(epoch FROM NOW()) / c.sec) * c.sec) AS end_ts
+      FROM cfg c
+    ),
+    buckets AS (
+      SELECT generate_series(b.start_ts, b.end_ts, c.sec * INTERVAL '1 second') AS bucket
+      FROM bounds b CROSS JOIN cfg c
+    ),
+    counts AS (
+      SELECT
+        r.alias_name,
+        to_timestamp(floor(extract(epoch FROM r.created_at) / c.sec) * c.sec) AS bucket,
+        COUNT(*)::int AS cnt
+      FROM llm_requests r, bounds b, cfg c
+      WHERE r.created_at >= b.start_ts AND r.alias_name IS NOT NULL
+      GROUP BY 1, 2
+    )
+    SELECT a.id, a.name, b.bucket, COALESCE(c.cnt, 0)
+    FROM aliases a
+    CROSS JOIN buckets b
+    LEFT JOIN counts c ON c.alias_name = a.name AND c.bucket = b.bucket
+    ORDER BY a.id, b.bucket
   |])
 
 truncateRequests :: Connection -> IO ()

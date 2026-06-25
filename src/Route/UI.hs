@@ -6,7 +6,8 @@ module Route.UI (uiRoutes) where
 import Web.Scotty
 import Lucid
 import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
-import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequests, getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, getAliasesWithUsage)
+import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, getAliasesWithUsage)
+import ChartJson (chartPollSeconds, chartSubtitle, loadChartJson)
 import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
 import Common (icon, showT, showWithCommas, maybeDash, basePage, queryParamDefault, formParamDefault, aliasBadge)
@@ -14,6 +15,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Data.Maybe (fromMaybe)
+import Control.Monad (when)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Encode.Pretty as AP
@@ -30,6 +32,7 @@ rateLimitSection aliasUsages =
     then ""
     else div_ [class_ "rate-limits"] $ do
       h2_ (icon "ph-speedometer" >> " Rate Limits (rolling 24h)")
+      p_ [class_ "rate-limits-subtitle"] (toHtml chartSubtitle)
       div_ [class_ "rate-limit-grid"] $ mapM_ rateLimitCard aliasUsages
 
 rateLimitCard :: AliasUsage -> Html ()
@@ -43,6 +46,8 @@ rateLimitCard u = do
       a_ [href_ ("/ui/aliases/" <> showT (laId a) <> "/edit"), class_ "card-edit-btn", title_ "Edit alias"] (icon "pencil")
     limitBar "Requests" reqCount (laDailyRequestLimit a)
     limitBar "Tokens" tokCount (laDailyTokenLimit a)
+    div_ [class_ "alias-chart-wrap"] $
+      canvas_ [class_ "alias-chart", id_ ("chart-" <> showT (laId a))] ""
 
 limitBar :: T.Text -> Int -> Maybe Int -> Html ()
 limitBar label count mlim = case mlim of
@@ -65,6 +70,10 @@ limitBar label count mlim = case mlim of
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
+  get "/ui/api/alias-charts" $ do
+    val <- liftIO $ withPool env loadChartJson
+    json val
+
   get "/ui/" $ do
     pageNum <- queryParamDefault "page" 1
     sortBy <- queryParamDefault "sort_by" ("created_at" :: T.Text)
@@ -245,7 +254,8 @@ page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir se
           hdr "response_body" (icon "ph-paper-plane-left" >> " Response")
       tbody_ $ mapM_ requestRow requests
     pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
-    script_ (refreshScript <> clickScript)
+    when (not (null aliasUsages)) aliasChartScripts
+    script_ clickScript
 
 requestRow :: LlmRequest -> Html ()
 requestRow r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrId r))] $ do
@@ -311,8 +321,12 @@ statusClass (Just s)
   | otherwise = ""
 statusClass Nothing = ""
 
-refreshScript :: T.Text
-refreshScript = "setTimeout(function() { window.location.reload(); }, 10000);"
+aliasChartScripts :: Html ()
+aliasChartScripts = do
+  script_ [type_ "text/javascript"] $
+    "window.CHART_POLL_MS=" <> showT (chartPollSeconds * 1000) <> ";"
+  script_ [src_ "https://cdn.jsdelivr.net/npm/chart.js@4"] ("" :: T.Text)
+  script_ [src_ "/alias-charts.js"] ("" :: T.Text)
 
 clickScript :: T.Text
 clickScript = T.intercalate "\n"

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS llm_requests (
 );
 
 CREATE INDEX IF NOT EXISTS idx_llm_requests_created_at ON llm_requests(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_requests_alias_created ON llm_requests(alias_name, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS aliases (
     id SERIAL PRIMARY KEY,

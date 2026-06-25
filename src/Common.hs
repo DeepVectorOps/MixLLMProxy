@@ -12,6 +12,7 @@ module Common
   , queryParamDefault
   , formParamDefault
   , aliasBadge
+  , aliasColor
   ) where
 
 import Lucid

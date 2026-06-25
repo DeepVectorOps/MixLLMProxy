@@ -12,6 +12,7 @@ import Network.Socket (withSocketsDo)
 
 import Route.OpenAI (buildRequest)
 import DB (parseDuration)
+import ChartJsonSpec (chartJsonTests, chartDbTests)
 
 main :: IO ()
 main = withSocketsDo $ do
@@ -32,6 +33,9 @@ main = withSocketsDo $ do
     , ("invalid", Nothing)
     , ("10", Nothing)
     ]
+
+  chartJsonTests
+  chartDbTests
 
   putStrLn "\n=== buildRequest sets responseTimeoutNone ==="
   req <- buildRequest "http://example.com" "sk-test" "{}"

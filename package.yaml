@@ -8,6 +8,14 @@ dependencies:
 
 library:
   source-dirs: src
+  exposed-modules:
+    - AppEnv
+    - Common
+    - DB
+    - ChartJson
+    - Route.Aliases
+    - Route.OpenAI
+    - Route.UI
   dependencies:
     - base
     - scotty
@@ -61,6 +69,8 @@ tests:
   spec:
     source-dirs: test
     main: Spec.hs
+    other-modules:
+      - ChartJsonSpec
     dependencies:
       - base
       - MixLLMProxy
@@ -72,3 +82,7 @@ tests:
       - wai
       - http-types
       - network
+      - aeson
+      - time
+      - postgresql-simple
+      - vector
