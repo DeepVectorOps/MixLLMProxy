@@ -88,6 +88,8 @@ strong { color: #e6edf3; font-weight: 600; font-size: 13px; }
 .rate-limit-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px; text-align: center; display: flex; flex-direction: column; }
 .rate-limit-name { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; justify-content: center; }
 .rate-limit-name code { color: #58a6ff; font-size: 13px; }
+.alias-filter-link { text-decoration: none; cursor: pointer; }
+.alias-filter-link:hover span { filter: brightness(1.15); }
 .card-edit-btn { color: #8b949e; font-size: 11px; text-decoration: none; opacity: 0.6; }
 .card-edit-btn:hover { opacity: 1; color: #58a6ff; }
 .limit-bar { margin-bottom: 6px; }

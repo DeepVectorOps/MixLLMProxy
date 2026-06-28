@@ -26,23 +26,25 @@ fmtLatency ms
   | ms >= 1000 = T.pack (show (fromIntegral (round (ms / 100) :: Int) / 10)) <> "s"
   | otherwise  = showT (round ms :: Int) <> "ms"
 
-rateLimitSection :: [AliasUsage] -> Html ()
-rateLimitSection aliasUsages =
+rateLimitSection :: T.Text -> T.Text -> T.Text -> [AliasUsage] -> Html ()
+rateLimitSection sortBy sortDir duration aliasUsages =
   if null aliasUsages
     then ""
     else div_ [class_ "rate-limits"] $ do
       h2_ (icon "ph-speedometer" >> " Rate Limits (rolling 24h)")
       p_ [class_ "rate-limits-subtitle"] (toHtml chartSubtitle)
-      div_ [class_ "rate-limit-grid"] $ mapM_ rateLimitCard aliasUsages
+      div_ [class_ "rate-limit-grid"] $ mapM_ (rateLimitCard sortBy sortDir duration) aliasUsages
 
-rateLimitCard :: AliasUsage -> Html ()
-rateLimitCard u = do
+rateLimitCard :: T.Text -> T.Text -> T.Text -> AliasUsage -> Html ()
+rateLimitCard sortBy sortDir duration u = do
   let a = auAlias u
       reqCount = auRequestCount u
       tokCount = auTokenCount u
+      filterUrl = makeUrl 1 sortBy sortDir "alias" (laName a) duration
   div_ [class_ "rate-limit-card"] $ do
     div_ [class_ "rate-limit-name"] $ do
-      aliasBadge (laName a)
+      a_ [href_ filterUrl, class_ "alias-filter-link", title_ ("Filter requests for " <> laName a)] $
+        aliasBadge (laName a)
       a_ [href_ ("/ui/aliases/" <> showT (laId a) <> "/edit"), class_ "card-edit-btn", title_ "Edit alias"] (icon "pencil")
     limitBar "Requests" reqCount (laDailyRequestLimit a)
     limitBar "Tokens" tokCount (laDailyTokenLimit a)
@@ -240,7 +242,7 @@ page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir se
           button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
         form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
           button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
-    rateLimitSection aliasUsages
+    rateLimitSection sortBy sortDir duration aliasUsages
     settingsSection settings
     searchForm searchField searchQuery sortBy sortDir duration
     pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
