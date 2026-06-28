@@ -22,7 +22,7 @@ That makes day-to-day dev work much easier:
 - **Compare providers** — run the same prompt against two aliases and diff the logged responses side by side
 - **Test limits safely** — set per-alias daily caps or a global req/s throttle to reproduce rate-limit behavior before production
 - **Pause traffic** — hit global pause when you want to stop burn while refactoring client code
-- **Catch runaway spend** — live charts and 24h usage bars surface request explosions early (retry loops, bad deploys, runaway agents) before they turn into a surprise bill
+- **Catch runaway spend** — live charts and per-alias rate limit cards surface request explosions early (retry loops, bad deploys, runaway agents) before they turn into a surprise bill
 
 Your app only needs one base URL and stable alias names. Keys and downstream endpoints live in the proxy config, not scattered across env files and branches.
 
@@ -33,7 +33,7 @@ Your app only needs one base URL and stable alias names. Keys and downstream end
 - **Per-alias rate limits** — optional rolling 24h caps on requests and tokens; over-limit requests get 429
 - **Global controls** — pause all traffic (503) or enforce a global requests/sec limit from the dashboard
 - **Full request logging** — every proxy call stored in PostgreSQL with latency, tokens, status, and bodies
-- **Web UI** (`/ui/`) — searchable/sortable request log, per-alias usage bars, live request charts (last 10 min), request detail with JSON tree view
+- **Web UI** (`/ui/`) — searchable/sortable request log, per-alias rate limit cards, live request charts (last 10 min), request detail with JSON tree view
 - **Alias management** (`/ui/aliases`) — create, edit, duplicate, delete aliases
 
 ## Quick start
@@ -94,7 +94,7 @@ No matching alias returns 400. Rate-limited aliases return 429.
 
 | URL | Description |
 |---|---|
-| `/ui/` | Request log, per-alias 24h rate-limit cards, live charts, global pause/speed controls |
+| `/ui/` | Request log, per-alias rate limit cards (rolling 24h), live charts, global pause/speed controls |
 | `/ui/request/:id` | Single-request detail with formatted JSON bodies |
 | `/ui/aliases` | Manage aliases and daily limits |
 | `/ui/aliases/info` | How aliases work + curl example |

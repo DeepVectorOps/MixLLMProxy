@@ -7,7 +7,7 @@ OpenAI-compatible LLM proxy with observability. Matches the `model` field to con
 | Endpoint | Method | Description |
 |---|---|---|
 | `/api/openai/v1/chat/completions` | POST | Chat completions proxy — matches `model` to alias |
-| `/ui/` | GET | Request log with per-alias rate limits (rolling 24h) |
+| `/ui/` | GET | Request log with per-alias rate limit cards (rolling 24h) |
 | `/ui/aliases` | GET | Alias CRUD |
 | `/ui/aliases/info` | GET | Alias usage guide |
 
