@@ -33,6 +33,7 @@ module DB
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.FromRow
 import Database.PostgreSQL.Simple.ToField (toField, Action)
+import Database.PostgreSQL.Simple.ToRow (ToRow)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Time (UTCTime)
@@ -44,7 +45,11 @@ import System.Environment (getEnv)
 import Text.Read (readMaybe)
 import System.IO (hPutStrLn, stderr)
 import Control.Monad (void)
+import Data.Maybe (listToMaybe)
 import Data.Char (isDigit, isAlpha, isSpace)
+
+queryOne :: (FromRow r, ToRow q) => Connection -> Query -> q -> IO (Maybe r)
+queryOne conn sql params = listToMaybe <$> query conn sql params
 
 
 data LlmRequest = LlmRequest
@@ -290,11 +295,8 @@ getRecentRequestsFiltered conn limit offset sortBy sortDir searchField searchQue
   query conn sql params
 
 getRequest :: Connection -> Int -> IO (Maybe LlmRequest)
-getRequest conn rid = do
-  results <- query conn ("SELECT " <> requestColumns <> " FROM llm_requests WHERE id = ?") (Only rid)
-  pure $ case results of
-    [r] -> Just r
-    _ -> Nothing
+getRequest conn rid =
+  queryOne conn ("SELECT " <> requestColumns <> " FROM llm_requests WHERE id = ?") (Only rid)
 
 countRequests :: Connection -> IO Int
 countRequests conn = do
@@ -320,18 +322,12 @@ getAliases :: Connection -> IO [LlmAlias]
 getAliases conn = query_ conn (aliasSelect <> " ORDER BY created_at DESC")
 
 getAliasByName :: Connection -> Text -> IO (Maybe LlmAlias)
-getAliasByName conn name = do
-  results <- query conn (aliasSelect <> " WHERE name = ?") (Only name)
-  pure $ case results of
-    [a] -> Just a
-    _   -> Nothing
+getAliasByName conn name =
+  queryOne conn (aliasSelect <> " WHERE name = ?") (Only name)
 
 getAliasById :: Connection -> Int -> IO (Maybe LlmAlias)
-getAliasById conn aid = do
-  results <- query conn (aliasSelect <> " WHERE id = ?") (Only aid)
-  pure $ case results of
-    [a] -> Just a
-    _   -> Nothing
+getAliasById conn aid =
+  queryOne conn (aliasSelect <> " WHERE id = ?") (Only aid)
 
 insertAlias :: Connection -> Text -> Text -> Text -> Text -> Maybe Int -> Maybe Int -> IO ()
 insertAlias conn name url key model tokenLimit reqLimit =

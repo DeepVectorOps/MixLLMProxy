@@ -53,6 +53,12 @@ checkGlobalRateLimit env = do
           then pure (Just $ "Global rate limit exceeded (" <> showT limit <> " reqs/sec)")
           else pure Nothing
 
+jsonError :: Status -> T.Text -> T.Text -> ActionM ()
+jsonError st msg typ = do
+  status st
+  setHeader "Content-Type" "application/json"
+  raw $ A.encode $ A.object ["error" A..= msg, "type" A..= typ]
+
 openAIRoutes :: AppEnv -> ScottyM ()
 openAIRoutes env = do
   post "/api/openai/v1/chat/completions" $ do
@@ -60,12 +66,8 @@ openAIRoutes env = do
     case mGlobalBlocked of
       Just errMsg -> do
         let isPaused = errMsg == "API is globally paused"
-        status (if isPaused then status503 else status429)
-        setHeader "Content-Type" "application/json"
-        raw $ A.encode $ A.object
-          [ "error" A..= errMsg
-          , "type" A..= (if isPaused then ("api_paused" :: T.Text) else ("rate_limit_exceeded" :: T.Text))
-          ]
+        jsonError (if isPaused then status503 else status429) errMsg
+          (if isPaused then "api_paused" else "rate_limit_exceeded")
       Nothing -> do
         reqBody <- body
         let reqModel = extractModel reqBody
@@ -76,13 +78,7 @@ openAIRoutes env = do
           Just alias -> do
             mBlocked <- liftIO $ withPool env $ \conn -> checkRateLimit conn alias
             case mBlocked of
-              Just errMsg -> do
-                status status429
-                setHeader "Content-Type" "application/json"
-                raw $ A.encode $ A.object
-                  [ "error" A..= errMsg
-                  , "type" A..= ("rate_limit_exceeded" :: T.Text)
-                  ]
+              Just errMsg -> jsonError status429 errMsg "rate_limit_exceeded"
               Nothing -> do
                 let overriddenBody = case A.decode reqBody of
                       Just (A.Object obj) -> A.encode $ A.Object $ KM.insert "model" (A.String $ laModel alias) obj

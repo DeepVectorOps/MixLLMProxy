@@ -26,6 +26,7 @@ import qualified Control.Exception as E
 import Control.Monad (void, replicateM_)
 import Database.PostgreSQL.Simple (Connection, Only(..), execute, execute_)
 import Data.List (nub)
+import Data.Maybe (listToMaybe)
 import GHC.Generics (Generic)
 
 data ChartAliasJSON = ChartAliasJSON
@@ -143,6 +144,3 @@ runChartDbTest = do
   deleteAlias conn (laId alias)
   putStrLn "PASS: chart DB integration"
 
-listToMaybe :: [a] -> Maybe a
-listToMaybe [] = Nothing
-listToMaybe (x:_) = Just x

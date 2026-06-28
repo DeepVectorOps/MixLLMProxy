@@ -12,6 +12,15 @@ module Common
   , basePage
   , queryParamDefault
   , formParamDefault
+  , optionalIntFormParam
+  , limitValueAttr
+  , hostFromHeader
+  , proxyEndpoint
+  , pageHeader
+  , aliasEditUrl
+  , aliasUpdateUrl
+  , aliasDuplicateUrl
+  , aliasDeleteUrl
   , aliasBadge
   , aliasColor
   , endpointBox
@@ -23,7 +32,9 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Web.Scotty (ActionM, queryParam, formParam, catch)
 import Control.Exception (SomeException)
-import Data.Maybe (maybe)
+import Data.Maybe (maybe, fromMaybe)
+import Data.String.Conversions (cs)
+import Text.Read (readMaybe)
 import Data.Text.Format.Numbers (prettyF, PrettyCfg(..))
 
 showT :: Show a => a -> T.Text
@@ -75,6 +86,44 @@ queryParamDefault key fallback = queryParam key `catch` (\(_ :: SomeException) -
 
 formParamDefault :: Parsable a => TL.Text -> a -> ActionM a
 formParamDefault key fallback = formParam key `catch` (\(_ :: SomeException) -> pure fallback)
+
+optionalIntFormParam :: TL.Text -> ActionM (Maybe Int)
+optionalIntFormParam key = do
+  mTxt <- (Just <$> formParam key) `catch` (\(_ :: SomeException) -> pure Nothing)
+  pure $ mTxt >>= readMaybe . TL.unpack
+
+limitValueAttr :: Maybe Int -> T.Text
+limitValueAttr = maybe "" showT
+
+hostFromHeader :: Maybe TL.Text -> T.Text
+hostFromHeader = fromMaybe "localhost" . fmap cs
+
+proxyEndpoint :: T.Text -> T.Text
+proxyEndpoint host = "http://" <> host <> "/api/openai/v1/chat/completions"
+
+pageHeader :: T.Text -> Maybe (Html ()) -> Html ()
+pageHeader host mExtra = div_ [class_ "header-row"] $ do
+  h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
+  a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
+  endpointBox (proxyEndpoint host)
+  case mExtra of
+    Just extra -> extra
+    Nothing -> pure ()
+
+aliasPath :: Int -> T.Text -> T.Text
+aliasPath aid suffix = "/ui/aliases/" <> showT aid <> suffix
+
+aliasEditUrl :: Int -> T.Text
+aliasEditUrl aid = aliasPath aid "/edit"
+
+aliasUpdateUrl :: Int -> T.Text
+aliasUpdateUrl aid = aliasPath aid "/update"
+
+aliasDuplicateUrl :: Int -> T.Text
+aliasDuplicateUrl aid = aliasPath aid "/duplicate"
+
+aliasDeleteUrl :: Int -> T.Text
+aliasDeleteUrl aid = aliasPath aid "/delete"
 
 hashText :: T.Text -> Int
 hashText = T.foldl' (\h c -> h * 33 + fromEnum c) 5381

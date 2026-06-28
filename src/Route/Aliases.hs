@@ -7,72 +7,71 @@ import Web.Scotty
 import Lucid
 import AppEnv (AppEnv, withPool)
 import DB (LlmAlias(..), getAliases, getAliasById, insertAlias, updateAlias, deleteAlias)
-import Common (icon, showT, basePage, aliasBadge, endpointBox)
+import Common
+  ( icon, showT, basePage, aliasBadge, pageHeader, hostFromHeader
+  , optionalIntFormParam, limitValueAttr
+  , aliasEditUrl, aliasUpdateUrl, aliasDuplicateUrl, aliasDeleteUrl
+  )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import Data.Maybe (fromMaybe, isJust, maybe, catMaybes, listToMaybe)
 import Control.Monad.IO.Class (liftIO)
-import Control.Exception (SomeException)
-import Text.Read (readMaybe)
 
-optionalIntFormParam :: TL.Text -> ActionM (Maybe Int)
-optionalIntFormParam key = do
-  mTxt <- (Just <$> formParam key) `catch` (\(_ :: SomeException) -> pure Nothing)
-  pure $ mTxt >>= readMaybe . TL.unpack
+data AliasForm = AliasForm
+  { afName :: T.Text
+  , afUrl :: T.Text
+  , afKey :: T.Text
+  , afModel :: T.Text
+  , afTokenLimit :: Maybe Int
+  , afReqLimit :: Maybe Int
+  }
 
-limitValueAttr :: Maybe Int -> T.Text
-limitValueAttr = maybe "" showT
+parseAliasForm :: ActionM AliasForm
+parseAliasForm = AliasForm
+  <$> formParam "name"
+  <*> formParam "url"
+  <*> formParam "key"
+  <*> formParam "model"
+  <*> optionalIntFormParam "daily_token_limit"
+  <*> optionalIntFormParam "daily_request_limit"
 
 duplicateName :: T.Text -> [T.Text] -> T.Text
 duplicateName name existing = fromMaybe (name <> "-1") $ listToMaybe $ dropWhile (`elem` existing)
   [ name <> "-" <> T.pack (show n) | n <- [1..] ]
 
-renderAliases :: AppEnv -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> ActionM ()
-renderAliases env editId name url key model tokenLimitFilled reqLimitFilled errMsg = do
+renderAliases :: AppEnv -> Maybe Int -> AliasForm -> Maybe T.Text -> ActionM ()
+renderAliases env editId form errMsg = do
   aliases <- liftIO $ withPool env $ \conn -> getAliases conn
-  host <- fromMaybe "localhost" . fmap TL.toStrict <$> header "Host"
-  html $ renderText $ aliasesPage host aliases editId name url key model tokenLimitFilled reqLimitFilled errMsg
+  host <- hostFromHeader <$> header "Host"
+  html $ renderText $ aliasesPage host aliases editId form errMsg
 
-validateAliasForm :: T.Text -> T.Text -> T.Text -> T.Text -> Bool
-validateAliasForm name url key model = T.null name || T.null url || T.null key || T.null model
+handleAliasSubmit :: AppEnv -> Maybe Int -> AliasForm -> ActionM ()
+handleAliasSubmit env mEditId form
+  | T.null (afName form) || T.null (afUrl form) || T.null (afKey form) || T.null (afModel form) =
+      renderAliases env mEditId form (Just "All fields are required")
+  | otherwise = do
+      liftIO $ withPool env $ \conn -> case mEditId of
+        Nothing -> insertAlias conn (afName form) (afUrl form) (afKey form) (afModel form) (afTokenLimit form) (afReqLimit form)
+        Just aid -> updateAlias conn aid (afName form) (afUrl form) (afKey form) (afModel form) (afTokenLimit form) (afReqLimit form)
+      redirect "/ui/aliases"
 
 aliasesRoutes :: AppEnv -> ScottyM ()
 aliasesRoutes env = do
-  get "/ui/aliases" $ renderAliases env Nothing T.empty T.empty T.empty T.empty Nothing Nothing Nothing
+  get "/ui/aliases" $
+    renderAliases env Nothing (AliasForm T.empty T.empty T.empty T.empty Nothing Nothing) Nothing
 
-  post "/ui/aliases/create" $ do
-    name <- formParam "name"
-    url <- formParam "url"
-    key <- formParam "key"
-    model <- formParam "model"
-    tokenLimit <- optionalIntFormParam "daily_token_limit"
-    reqLimit <- optionalIntFormParam "daily_request_limit"
-    if validateAliasForm name url key model
-      then renderAliases env Nothing name url key model tokenLimit reqLimit (Just "All fields are required")
-      else do
-        liftIO $ withPool env $ \conn -> insertAlias conn name url key model tokenLimit reqLimit
-        redirect "/ui/aliases"
+  post "/ui/aliases/create" $ handleAliasSubmit env Nothing =<< parseAliasForm
 
   get "/ui/aliases/:id/edit" $ do
     (aid :: Int) <- pathParam "id"
     malias <- liftIO $ withPool env $ \conn -> getAliasById conn aid
     case malias of
-      Just a -> renderAliases env (Just (laId a)) (laName a) (laEndpointUrl a) (laApiKey a) (laModel a) (laDailyTokenLimit a) (laDailyRequestLimit a) Nothing
+      Just a -> renderAliases env (Just (laId a)) (aliasToForm a) Nothing
       Nothing -> redirect "/ui/aliases"
 
   post "/ui/aliases/:id/update" $ do
     (aid :: Int) <- pathParam "id"
-    name <- formParam "name"
-    url <- formParam "url"
-    key <- formParam "key"
-    model <- formParam "model"
-    tokenLimit <- optionalIntFormParam "daily_token_limit"
-    reqLimit <- optionalIntFormParam "daily_request_limit"
-    if validateAliasForm name url key model
-      then renderAliases env (Just aid) name url key model tokenLimit reqLimit (Just "All fields are required")
-      else do
-        liftIO $ withPool env $ \conn -> updateAlias conn aid name url key model tokenLimit reqLimit
-        redirect "/ui/aliases"
+    handleAliasSubmit env (Just aid) =<< parseAliasForm
 
   post "/ui/aliases/:id/duplicate" $ do
     (aid :: Int) <- pathParam "id"
@@ -81,7 +80,8 @@ aliasesRoutes env = do
       Just a -> do
         existingNames <- liftIO $ withPool env $ \conn -> map laName <$> getAliases conn
         let newName = duplicateName (laName a) existingNames
-        liftIO $ withPool env $ \conn -> insertAlias conn newName (laEndpointUrl a) (laApiKey a) (laModel a) (laDailyTokenLimit a) (laDailyRequestLimit a)
+        liftIO $ withPool env $ \conn ->
+          insertAlias conn newName (laEndpointUrl a) (laApiKey a) (laModel a) (laDailyTokenLimit a) (laDailyRequestLimit a)
         redirect "/ui/aliases"
       Nothing -> redirect "/ui/aliases"
 
@@ -90,40 +90,40 @@ aliasesRoutes env = do
     liftIO $ withPool env $ \conn -> deleteAlias conn aid
     redirect "/ui/aliases"
 
-aliasesPage :: T.Text -> [LlmAlias] -> Maybe Int -> T.Text -> T.Text -> T.Text -> T.Text -> Maybe Int -> Maybe Int -> Maybe T.Text -> Html ()
-aliasesPage host aliases editId nameFilled urlFilled keyFilled modelFilled tokenLimitFilled reqLimitFilled errorMsg = basePage "MixLLMProxy — Aliases" $ do
+aliasToForm :: LlmAlias -> AliasForm
+aliasToForm a = AliasForm
+  (laName a) (laEndpointUrl a) (laApiKey a) (laModel a) (laDailyTokenLimit a) (laDailyRequestLimit a)
+
+aliasesPage :: T.Text -> [LlmAlias] -> Maybe Int -> AliasForm -> Maybe T.Text -> Html ()
+aliasesPage host aliases editId form errorMsg = basePage "MixLLMProxy — Aliases" $ do
   div_ [class_ "container"] $ do
-    div_ [class_ "header-row"] $ do
-      h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
-      a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
-      let endpoint = T.concat ["http://", host, "/api/openai/v1/chat/completions"]
-      endpointBox endpoint
+    pageHeader host Nothing
     p_ [class_ "subtitle"] "Manage LLM endpoint aliases"
 
     div_ [class_ "form-section"] $ do
       h2_ $ toHtml (if isJust editId then ("Edit Alias" :: T.Text) else "New Alias")
       maybe "" (\e -> div_ [class_ "error"] (toHtml e)) errorMsg
-      form_ [method_ "post", action_ (if isJust editId then "/ui/aliases/" <> showT (fromMaybe 0 editId) <> "/update" else "/ui/aliases/create")] $ do
+      form_ [method_ "post", action_ (if isJust editId then aliasUpdateUrl (fromMaybe 0 editId) else "/ui/aliases/create")] $ do
         div_ [class_ "form-grid"] $ do
           label_ [for_ "name"] "Name"
-          input_ [type_ "text", name_ "name", id_ "name", value_ nameFilled, placeholder_ "e.g. openai-prod", required_ ""]
+          input_ [type_ "text", name_ "name", id_ "name", value_ (afName form), placeholder_ "e.g. openai-prod", required_ ""]
 
           label_ [for_ "url"] "Endpoint URL"
-          input_ [type_ "text", name_ "url", id_ "url", value_ urlFilled, placeholder_ "https://api.openai.com/v1/chat/completions", required_ ""]
+          input_ [type_ "text", name_ "url", id_ "url", value_ (afUrl form), placeholder_ "https://api.openai.com/v1/chat/completions", required_ ""]
 
           label_ [for_ "key"] "API Key"
           div_ [class_ "key-wrapper"] $ do
-            input_ [type_ "password", name_ "key", id_ "key", value_ keyFilled, placeholder_ "sk-...", autocomplete_ "off"]
+            input_ [type_ "password", name_ "key", id_ "key", value_ (afKey form), placeholder_ "sk-...", autocomplete_ "off"]
             button_ [type_ "button", class_ "btn-toggle-key", id_ "toggleKeyBtn", onclick_ "toggleKey()"] (icon "eye" >> "")
 
           label_ [for_ "model"] "Model"
-          input_ [type_ "text", name_ "model", id_ "model", value_ modelFilled, placeholder_ "gpt-4o", required_ ""]
+          input_ [type_ "text", name_ "model", id_ "model", value_ (afModel form), placeholder_ "gpt-4o", required_ ""]
 
           label_ [for_ "daily_token_limit"] "Daily Token Limit"
-          input_ [type_ "number", name_ "daily_token_limit", id_ "daily_token_limit", value_ (limitValueAttr tokenLimitFilled), placeholder_ "blank = no limit", min_ "0"]
+          input_ [type_ "number", name_ "daily_token_limit", id_ "daily_token_limit", value_ (limitValueAttr (afTokenLimit form)), placeholder_ "blank = no limit", min_ "0"]
 
           label_ [for_ "daily_request_limit"] "Daily Request Limit"
-          input_ [type_ "number", name_ "daily_request_limit", id_ "daily_request_limit", value_ (limitValueAttr reqLimitFilled), placeholder_ "blank = no limit", min_ "0"]
+          input_ [type_ "number", name_ "daily_request_limit", id_ "daily_request_limit", value_ (limitValueAttr (afReqLimit form)), placeholder_ "blank = no limit", min_ "0"]
 
         div_ [class_ "form-actions"] $ do
           button_ [type_ "submit", class_ "btn-save"] (icon "floppy-disk" >> " " >> toHtml (if isJust editId then ("Update" :: T.Text) else "Create"))
@@ -154,10 +154,10 @@ aliasRow a = tr_ $ do
   td_ [class_ "alias-model"] (toHtml (laModel a))
   td_ [class_ "alias-limits"] (toHtml (formatLimits a))
   td_ [class_ "actions"] $ do
-    a_ [href_ ("/ui/aliases/" <> showT (laId a) <> "/edit"), class_ "btn-edit"] (icon "pencil" >> " Edit")
-    form_ [method_ "post", action_ ("/ui/aliases/" <> showT (laId a) <> "/duplicate"), class_ "form-inline"] $
+    a_ [href_ (aliasEditUrl (laId a)), class_ "btn-edit"] (icon "pencil" >> " Edit")
+    form_ [method_ "post", action_ (aliasDuplicateUrl (laId a)), class_ "form-inline"] $
       button_ [type_ "submit", class_ "btn-duplicate"] (icon "copy" >> " Duplicate")
-    form_ [method_ "post", action_ ("/ui/aliases/" <> showT (laId a) <> "/delete"), class_ "form-inline"] $
+    form_ [method_ "post", action_ (aliasDeleteUrl (laId a)), class_ "form-inline"] $
       button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete this alias?')"] (icon "trash" >> " Delete")
 
 formatLimits :: LlmAlias -> T.Text
@@ -167,4 +167,3 @@ formatLimits a =
                 , (\n -> showT n <> " tok/day") <$> laDailyTokenLimit a
                 ]
   in if null parts then "—" else T.intercalate ", " parts
-

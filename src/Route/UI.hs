@@ -10,7 +10,11 @@ import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequestsFilter
 import ChartJson (chartPollSeconds, chartSubtitle, loadChartJson)
 import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
-import Common (icon, showT, showWithCommas, showCompact, maybeDash, basePage, queryParamDefault, formParamDefault, aliasBadge, endpointBox)
+import Common
+  ( icon, showT, showWithCommas, showCompact, maybeDash, basePage
+  , queryParamDefault, formParamDefault, aliasBadge, pageHeader, hostFromHeader
+  , aliasEditUrl
+  )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -57,7 +61,7 @@ rateLimitCard sortBy sortDir duration u = do
     div_ [class_ "rate-limit-name"] $ do
       a_ [href_ filterUrl, class_ "alias-filter-link", title_ ("Filter requests for " <> laName a)] $
         aliasBadge (laName a)
-      a_ [href_ ("/ui/aliases/" <> showT (laId a) <> "/edit"), class_ "card-edit-btn", title_ "Edit alias"] (icon "pencil")
+      a_ [href_ (aliasEditUrl (laId a)), class_ "card-edit-btn", title_ "Edit alias"] (icon "pencil")
     limitBar "Requests" reqCount (laDailyRequestLimit a)
     limitBar "Tokens" tokCount (laDailyTokenLimit a)
     div_ [class_ "alias-chart-wrap"] $
@@ -68,26 +72,39 @@ fmtLimitNum n
   | n >= 100000 = showCompact n
   | otherwise   = showWithCommas n
 
+limitBarShell :: T.Text -> T.Text -> Maybe T.Text -> Maybe (Int, T.Text) -> Html ()
+limitBarShell label nums mTitle mFill = div_ [class_ "limit-bar"] $ do
+  div_ [class_ "limit-bar-label"] $ do
+    span_ [class_ "limit-bar-name"] (toHtml label)
+    case mTitle of
+      Just titleTxt -> span_ [class_ "limit-bar-nums", title_ titleTxt] (toHtml nums)
+      Nothing -> span_ [class_ "limit-bar-nums"] (toHtml nums)
+  case mFill of
+    Just (widthPct, barClass) ->
+      div_ [class_ "limit-bar-track"] $
+        div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT widthPct <> "%")] ""
+    Nothing -> pure ()
+
 limitBar :: T.Text -> Int -> Maybe Int -> Html ()
 limitBar label count mlim = case mlim of
-  Just lim | lim > 0 -> do
+  Just lim | lim > 0 ->
     let pct = count * 100 `div` lim
         pctTxt = showT pct <> "%"
         widthPct = min 100 pct
         barClass = if pct >= 100 then "bar-full" else if pct >= 80 then "bar-warn" else ""
         numsTxt = fmtLimitNum count <> " / " <> fmtLimitNum lim <> " (" <> pctTxt <> ")"
         titleTxt = showWithCommas count <> " / " <> showWithCommas lim <> " (" <> pctTxt <> ")"
-    div_ [class_ "limit-bar"] $ do
-      div_ [class_ "limit-bar-label"] $ do
-        span_ [class_ "limit-bar-name"] (toHtml label)
-        span_ [class_ "limit-bar-nums", title_ titleTxt] (toHtml numsTxt)
-      div_ [class_ "limit-bar-track"] $
-        div_ [class_ ("limit-bar-fill " <> barClass), style_ ("width:" <> showT widthPct <> "%")] ""
-  _ -> do
-    div_ [class_ "limit-bar"] $ do
-      div_ [class_ "limit-bar-label"] $ do
-        span_ [class_ "limit-bar-name"] (toHtml label)
-        span_ [class_ "limit-bar-nums"] (toHtml (fmtLimitNum count <> " / ∞"))
+    in limitBarShell label numsTxt (Just titleTxt) (Just (widthPct, barClass))
+  _ -> limitBarShell label (fmtLimitNum count <> " / ∞") Nothing Nothing
+
+renderModel :: Maybe T.Text -> Html ()
+renderModel = toHtml . fromMaybe "-"
+
+renderAlias :: Maybe T.Text -> Html ()
+renderAlias = maybe (toHtml ("-" :: T.Text)) aliasBadge
+
+renderLatency :: Maybe Double -> Html ()
+renderLatency = toHtml . maybe "-" fmtLatency
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
@@ -248,17 +265,11 @@ settingsSection s = do
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> GlobalSettings -> Html ()
 page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration settings = do
-    div_ [class_ "header-row"] $ do
-      h1_ $ a_ [href_ "/ui/"] "🔭 MixLLMProxy"
-      a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
-      let base = fromMaybe "localhost" (TL.toStrict <$> host)
-          endpoint = T.concat ["http://", base, "/api/openai/v1/chat/completions"]
-      endpointBox endpoint
-      div_ [class_ "truncate-actions"] $ do
-        form_ [action_ "/ui/truncate-older", method_ "post", class_ "form-inline"] $
-          button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
-        form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
-          button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate")
+    pageHeader (hostFromHeader host) (Just $ div_ [class_ "truncate-actions"] $ do
+      form_ [action_ "/ui/truncate-older", method_ "post", class_ "form-inline"] $
+        button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
+      form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
+        button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate"))
     rateLimitSection sortBy sortDir duration aliasUsages
     settingsSection settings
     searchForm searchField searchQuery sortBy sortDir duration
@@ -291,13 +302,13 @@ requestRow r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrI
   td_ [class_ "time"] (toHtml (T.take 19 (showT (lrCreatedAt r))))
   td_ [class_ "len"] (toHtml (maybeDash (fmap T.length (lrRequestBody r))))
   td_ [class_ "len"] (toHtml (maybeDash (fmap T.length (lrResponseBody r))))
-  td_ [class_ "model"] (toHtml (fromMaybe "-" (lrModel r)))
-  td_ [class_ "alias"] (maybe "-" aliasBadge (lrAliasName r))
+  td_ [class_ "model"] (renderModel (lrModel r))
+  td_ [class_ "alias"] (renderAlias (lrAliasName r))
   td_ [class_ "len"] (toHtml (maybeDash (lrPromptTokens r)))
   td_ [class_ "len"] (toHtml (maybeDash (lrCompletionTokens r)))
   td_ [class_ "len"] (toHtml (maybeDash (lrTotalTokens r)))
   td_ [class_ (statusClass (lrResponseStatus r))] (toHtml (maybeDash (lrResponseStatus r)))
-  td_ [class_ "latency"] (toHtml (maybe "-" fmtLatency (lrLatencyMs r)))
+  td_ [class_ "latency"] (renderLatency (lrLatencyMs r))
   td_ [class_ "req"] (toHtml (fromMaybe "-" (clip 80 (lrRequestBody r))))
   td_ [class_ "resp"] (toHtml (fromMaybe "-" (clip 80 (lrResponseBody r))))
 
@@ -314,13 +325,13 @@ detailPage r = do
       detailCell "ph-clock" "Time" (toHtml (showT (lrCreatedAt r)))
       detailCell "ph-arrow-down-up" "Method" (toHtml (lrMethod r))
       detailCell "ph-link" "Endpoint" (toHtml (lrEndpoint r))
-      detailCell "ph-cpu" "Model" (toHtml (fromMaybe "-" (lrModel r)))
-      detailCell "ph-tag" "Alias" (maybe "-" aliasBadge (lrAliasName r))
+      detailCell "ph-cpu" "Model" (renderModel (lrModel r))
+      detailCell "ph-tag" "Alias" (renderAlias (lrAliasName r))
       detailCell "ph-arrow-line-down" "Prompt tokens" (toHtml (maybeDash (lrPromptTokens r)))
       detailCell "ph-arrow-line-up" "Completion tokens" (toHtml (maybeDash (lrCompletionTokens r)))
       detailCell "ph-equals" "Total tokens" (toHtml (maybeDash (lrTotalTokens r)))
       detailCell "ph-check-circle" "Status" (toHtml (maybeDash (lrResponseStatus r)))
-      detailCell "ph-timer" "Duration" (toHtml (maybe "-" fmtLatency (lrLatencyMs r)))
+      detailCell "ph-timer" "Duration" (renderLatency (lrLatencyMs r))
     script_ [src_ "https://cdn.jsdelivr.net/npm/json-formatter-js@2"] ("" :: T.Text)
     div_ [class_ "bodies"] $ do
       bodyPanel "Request Body" "req-body" (lrRequestBody r)
