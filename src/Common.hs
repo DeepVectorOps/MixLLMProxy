@@ -22,6 +22,7 @@ module Common
   , aliasDuplicateUrl
   , aliasDeleteUrl
   , aliasBadge
+  , aliasBadgeEditable
   , aliasColor
   , endpointBox
   ) where
@@ -145,9 +146,17 @@ aliasColor name =
 
 aliasBadge :: T.Text -> Html ()
 aliasBadge name =
-  let color = aliasColor name
-      styleVal = "background: " <> color <> "; color: #ffffff; border-radius: 4px; padding: 3px 8px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace; font-size: 11px; display: inline-block;"
-  in span_ [style_ styleVal] (toHtml name)
+  span_ [class_ "alias-badge", style_ ("background: " <> aliasColor name)] (toHtml name)
+
+aliasBadgeEditable :: Maybe T.Text -> Int -> T.Text -> Html ()
+aliasBadgeEditable mFilterUrl aid name =
+  span_ [class_ "alias-badge", style_ ("background: " <> aliasColor name)] $ do
+    case mFilterUrl of
+      Just url ->
+        a_ [href_ url, class_ "alias-badge-label", title_ ("Filter requests for " <> name)] (toHtml name)
+      Nothing ->
+        span_ [class_ "alias-badge-label"] (toHtml name)
+    a_ [href_ (aliasEditUrl aid), class_ "alias-badge-edit", title_ "Edit alias"] (icon "pencil")
 
 endpointBox :: T.Text -> Html ()
 endpointBox url =

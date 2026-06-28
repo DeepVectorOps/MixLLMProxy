@@ -88,10 +88,11 @@ strong { color: #e6edf3; font-weight: 600; font-size: 13px; }
 .rate-limit-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 12px; text-align: center; display: flex; flex-direction: column; }
 .rate-limit-name { margin-bottom: 8px; display: flex; align-items: center; gap: 8px; justify-content: center; }
 .rate-limit-name code { color: #58a6ff; font-size: 13px; }
-.alias-filter-link { text-decoration: none; cursor: pointer; }
-.alias-filter-link:hover span { filter: brightness(1.15); }
-.card-edit-btn { color: #8b949e; font-size: 11px; text-decoration: none; opacity: 0.6; }
-.card-edit-btn:hover { opacity: 1; color: #58a6ff; }
+.alias-badge { display: inline-flex; align-items: center; gap: 4px; color: #ffffff; border-radius: 4px; padding: 3px 6px 3px 8px; font-weight: 600; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; }
+.alias-badge-label { color: inherit; text-decoration: none; }
+.alias-badge-label:hover { filter: brightness(1.15); }
+.alias-badge-edit { color: rgba(255, 255, 255, 0.65); font-size: 10px; text-decoration: none; line-height: 1; }
+.alias-badge-edit:hover { color: #ffffff; }
 .limit-bar { margin-bottom: 6px; }
 .limit-bar:last-child { margin-bottom: 0; }
 .limit-bar-label { display: flex; flex-direction: row; gap: 6px; font-size: 11px; color: #8b949e; margin-bottom: 4px; align-items: baseline; justify-content: center; }
