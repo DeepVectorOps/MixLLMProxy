@@ -22,7 +22,7 @@ module Common
   , aliasDuplicateUrl
   , aliasDeleteUrl
   , aliasBadge
-  , aliasBadgeEditable
+  , aliasBadgeWithEdit
   , aliasColor
   , endpointBox
   ) where
@@ -148,15 +148,23 @@ aliasBadge :: T.Text -> Html ()
 aliasBadge name =
   span_ [class_ "alias-badge", style_ ("background: " <> aliasColor name)] (toHtml name)
 
-aliasBadgeEditable :: Maybe T.Text -> Int -> T.Text -> Html ()
-aliasBadgeEditable mFilterUrl aid name =
-  span_ [class_ "alias-badge", style_ ("background: " <> aliasColor name)] $ do
-    case mFilterUrl of
-      Just url ->
-        a_ [href_ url, class_ "alias-badge-label", title_ ("Filter requests for " <> name)] (toHtml name)
-      Nothing ->
-        span_ [class_ "alias-badge-label"] (toHtml name)
-    a_ [href_ (aliasEditUrl aid), class_ "alias-badge-edit", title_ "Edit alias"] (icon "pencil")
+aliasBadgeLinked :: Maybe T.Text -> T.Text -> Html ()
+aliasBadgeLinked mFilterUrl name = case mFilterUrl of
+  Just url ->
+    a_ [href_ url, class_ "alias-badge-link", title_ ("Filter requests for " <> name)] $
+      aliasBadge name
+  Nothing ->
+    aliasBadge name
+
+aliasEditBadge :: Int -> Html ()
+aliasEditBadge aid =
+  a_ [href_ (aliasEditUrl aid), class_ "alias-edit-badge", title_ "Edit alias"] (icon "pencil")
+
+aliasBadgeWithEdit :: Maybe T.Text -> Int -> T.Text -> Html ()
+aliasBadgeWithEdit mFilterUrl aid name =
+  div_ [class_ "alias-badge-row"] $ do
+    aliasBadgeLinked mFilterUrl name
+    aliasEditBadge aid
 
 endpointBox :: T.Text -> Html ()
 endpointBox url =

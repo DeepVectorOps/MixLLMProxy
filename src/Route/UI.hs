@@ -12,7 +12,7 @@ import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
 import Common
   ( icon, showT, showWithCommas, showCompact, maybeDash, basePage
-  , queryParamDefault, formParamDefault, aliasBadge, aliasBadgeEditable, pageHeader, hostFromHeader
+  , queryParamDefault, formParamDefault, aliasBadge, aliasBadgeWithEdit, pageHeader, hostFromHeader
   )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -42,13 +42,17 @@ rateLimitSection sortBy sortDir duration aliasUsages =
         mapM_ (rateLimitCard sortBy sortDir duration) active
         unless (null unused) $ unusedAliasesCard unused
 
+rateLimitAliasHeader :: Maybe T.Text -> LlmAlias -> Html ()
+rateLimitAliasHeader mFilter a =
+  aliasBadgeWithEdit mFilter (laId a) (laName a)
+
 unusedAliasesCard :: [AliasUsage] -> Html ()
 unusedAliasesCard unused =
   div_ [class_ "rate-limit-card rate-limit-card-unused"] $ do
     div_ [class_ "rate-limit-name"] $
       span_ [class_ "unused-card-label"] "Unused"
     div_ [class_ "unused-aliases-badges"] $
-      mapM_ (\u -> let a = auAlias u in aliasBadgeEditable Nothing (laId a) (laName a)) unused
+      mapM_ (rateLimitAliasHeader Nothing . auAlias) unused
 
 rateLimitCard :: T.Text -> T.Text -> T.Text -> AliasUsage -> Html ()
 rateLimitCard sortBy sortDir duration u = do
@@ -58,7 +62,7 @@ rateLimitCard sortBy sortDir duration u = do
       filterUrl = makeUrl 1 sortBy sortDir "alias" (laName a) duration
   div_ [class_ "rate-limit-card"] $ do
     div_ [class_ "rate-limit-name"] $
-      aliasBadgeEditable (Just filterUrl) (laId a) (laName a)
+      rateLimitAliasHeader (Just filterUrl) a
     limitBar "Requests" reqCount (laDailyRequestLimit a)
     limitBar "Tokens" tokCount (laDailyTokenLimit a)
     div_ [class_ "alias-chart-wrap"] $
