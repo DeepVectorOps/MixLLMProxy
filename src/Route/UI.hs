@@ -51,6 +51,11 @@ rateLimitCard sortBy sortDir duration u = do
     div_ [class_ "alias-chart-wrap"] $
       canvas_ [class_ "alias-chart", id_ ("chart-" <> showT (laId a))] ""
 
+fmtLimitNum :: Int -> T.Text
+fmtLimitNum n
+  | n >= 100000 = showCompact n
+  | otherwise   = showWithCommas n
+
 limitBar :: T.Text -> Int -> Maybe Int -> Html ()
 limitBar label count mlim = case mlim of
   Just lim | lim > 0 -> do
@@ -58,8 +63,8 @@ limitBar label count mlim = case mlim of
         pctTxt = showT pct <> "%"
         widthPct = min 100 pct
         barClass = if pct >= 100 then "bar-full" else if pct >= 80 then "bar-warn" else ""
-        numsTxt = pctTxt <> " · " <> showCompact count <> "/" <> showCompact lim
-        titleTxt = showWithCommas count <> " / " <> showWithCommas lim
+        numsTxt = fmtLimitNum count <> " / " <> fmtLimitNum lim <> " (" <> pctTxt <> ")"
+        titleTxt = showWithCommas count <> " / " <> showWithCommas lim <> " (" <> pctTxt <> ")"
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ [class_ "limit-bar-name"] (toHtml label)
@@ -70,7 +75,7 @@ limitBar label count mlim = case mlim of
     div_ [class_ "limit-bar"] $ do
       div_ [class_ "limit-bar-label"] $ do
         span_ [class_ "limit-bar-name"] (toHtml label)
-        span_ [class_ "limit-bar-nums"] (toHtml (showCompact count <> " / ∞"))
+        span_ [class_ "limit-bar-nums"] (toHtml (fmtLimitNum count <> " / ∞"))
 
 uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
