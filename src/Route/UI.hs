@@ -15,7 +15,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Data.Maybe (fromMaybe)
-import Control.Monad (when)
+import Data.List (partition)
+import Control.Monad (when, unless)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Encode.Pretty as AP
@@ -30,10 +31,21 @@ rateLimitSection :: T.Text -> T.Text -> T.Text -> [AliasUsage] -> Html ()
 rateLimitSection sortBy sortDir duration aliasUsages =
   if null aliasUsages
     then ""
-    else div_ [class_ "rate-limits"] $ do
+    else let (active, unused) = partition ((> 0) . auRequestCount) aliasUsages
+         in div_ [class_ "rate-limits"] $ do
       h2_ (icon "ph-speedometer" >> " Rate Limits (rolling 24h)")
       p_ [class_ "rate-limits-subtitle"] (toHtml chartSubtitle)
-      div_ [class_ "rate-limit-grid"] $ mapM_ (rateLimitCard sortBy sortDir duration) aliasUsages
+      div_ [class_ "rate-limit-grid"] $ do
+        mapM_ (rateLimitCard sortBy sortDir duration) active
+        unless (null unused) $ unusedAliasesCard unused
+
+unusedAliasesCard :: [AliasUsage] -> Html ()
+unusedAliasesCard unused =
+  div_ [class_ "rate-limit-card rate-limit-card-unused"] $ do
+    div_ [class_ "rate-limit-name"] $
+      span_ [class_ "unused-card-label"] "Unused"
+    div_ [class_ "unused-aliases-badges"] $
+      mapM_ (aliasBadge . laName . auAlias) unused
 
 rateLimitCard :: T.Text -> T.Text -> T.Text -> AliasUsage -> Html ()
 rateLimitCard sortBy sortDir duration u = do
