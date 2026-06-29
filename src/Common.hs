@@ -10,6 +10,7 @@ module Common
   , maybeTextLenCompact
   , maybeDash
   , faviconSvg
+  , logoMark
   , baseHead
   , basePage
   , queryParamDefault
@@ -19,6 +20,7 @@ module Common
   , hostFromHeader
   , proxyEndpoint
   , pageHeader
+  , pageToolbar
   , aliasEditUrl
   , aliasUpdateUrl
   , aliasDuplicateUrl
@@ -72,7 +74,10 @@ maybeDash :: Show a => Maybe a -> T.Text
 maybeDash = maybe "-" showT
 
 faviconSvg :: T.Text
-faviconSvg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔭%3C/text%3E%3C/svg%3E"
+faviconSvg = "/logo.svg"
+
+logoMark :: Html ()
+logoMark = img_ [src_ "/logo.svg", class_ "logo-mark", alt_ "", width_ "88", height_ "88"]
 
 icon :: T.Text -> Html ()
 icon name = i_ [class_ ("ph " <> if "ph-" `T.isPrefixOf` name then name else "ph-" <> name)] ""
@@ -113,9 +118,17 @@ hostFromHeader = fromMaybe "localhost" . fmap cs
 proxyEndpoint :: T.Text -> T.Text
 proxyEndpoint host = "http://" <> host <> "/api/openai/v1/chat/completions"
 
-pageHeader :: T.Text -> Maybe (Html ()) -> Html ()
-pageHeader host mExtra = div_ [class_ "header-row"] $ do
-  h1_ $ a_ [href_ "/ui/", style_ "color: inherit; text-decoration: none;"] "🔭 MixLLMProxy"
+pageHeader :: Html ()
+pageHeader = header_ [class_ "site-header"] $
+  div_ [class_ "site-header-inner"] $
+    div_ [class_ "site-brand"] $
+      h1_ [class_ "site-heading"] $
+        a_ [href_ "/ui/", class_ "site-title"] $ do
+          logoMark
+          span_ [class_ "site-name"] "MixLLMProxy"
+
+pageToolbar :: T.Text -> Maybe (Html ()) -> Html ()
+pageToolbar host mExtra = div_ [class_ "page-toolbar"] $ do
   a_ [href_ "/ui/aliases", class_ "nav-btn"] (icon "gear" >> " Aliases")
   endpointBox (proxyEndpoint host)
   case mExtra of

@@ -13,7 +13,7 @@ import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
 import Common
   ( icon, showT, showWithCommas, showCompact, maybeCompact, maybeTextLenCompact, maybeDash, basePage
-  , queryParamDefault, formParamDefault, aliasBadge, aliasBadgeWithEdit, pageHeader, hostFromHeader
+  , queryParamDefault, formParamDefault, aliasBadge, aliasBadgeWithEdit, pageHeader, pageToolbar, hostFromHeader
   )
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -152,7 +152,13 @@ uiRoutes env = do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
     case mreq of
-      Just req -> html $ renderText $ basePage ("MixLLMProxy — Request #" <> showT (lrId req)) $ detailPage req
+      Just req -> do
+        host <- header "Host"
+        html $ renderText $ basePage ("MixLLMProxy — Request #" <> showT (lrId req)) $ do
+          pageHeader
+          div_ [class_ "page-content"] $ do
+            pageToolbar (hostFromHeader host) Nothing
+            detailPage req
       Nothing -> html "not found"
   post "/ui/truncate" $ do
     liftIO $ withPool env $ \conn -> truncateRequests conn
@@ -342,40 +348,42 @@ soundSettingsCard =
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> GlobalSettings -> Html ()
 page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration metric settings = do
-    pageHeader (hostFromHeader host) (Just $ div_ [class_ "truncate-actions"] $ do
-      form_ [action_ "/ui/truncate-older", method_ "post", class_ "form-inline"] $
-        button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
-      form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
-        button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate"))
-    rateLimitSection sortBy sortDir duration metric aliasUsages
-    settingsSection settings
-    searchForm searchField searchQuery sortBy sortDir duration metric
-    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
-    table_ [class_ "requests"] $ do
-      thead_ $ do
-        tr_ $ do
-          let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery duration metric label
-          hdr "id" "#"
-          hdr "created_at" (icon "ph-clock" >> " Time")
-          case metric of
-            Chars -> do
-              hdr "input_chars" (icon "ph-download-simple" >> " Input Chars")
-              hdr "output_chars" (icon "ph-upload-simple" >> " Output Chars")
-            Tokens -> do
-              hdr "prompt_tokens" (icon "ph-arrow-line-down" >> " In Tok")
-              hdr "completion_tokens" (icon "ph-arrow-line-up" >> " Out Tok")
-              hdr "total_tokens" (icon "ph-equals" >> " Total")
-          hdr "model" (icon "ph-cpu" >> " Model")
-          hdr "alias_name" (icon "ph-tag" >> " Alias")
-          hdr "response_status" (icon "ph-check-circle" >> " Status")
-          hdr "latency_ms" (icon "ph-timer" >> " Duration")
-          hdr "request_body" (icon "ph-paper-plane-right" >> " Request")
-          hdr "response_body" (icon "ph-paper-plane-left" >> " Response")
-      tbody_ $ mapM_ (requestRow metric) requests
-    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
-    when (not (null aliasUsages)) aliasChartScripts
-    requestSoundScripts
-    script_ clickScript
+    pageHeader
+    div_ [class_ "page-content"] $ do
+      pageToolbar (hostFromHeader host) (Just $ div_ [class_ "truncate-actions"] $ do
+        form_ [action_ "/ui/truncate-older", method_ "post", class_ "form-inline"] $
+          button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
+        form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
+          button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate"))
+      rateLimitSection sortBy sortDir duration metric aliasUsages
+      settingsSection settings
+      searchForm searchField searchQuery sortBy sortDir duration metric
+      pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
+      table_ [class_ "requests"] $ do
+        thead_ $ do
+          tr_ $ do
+            let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery duration metric label
+            hdr "id" "#"
+            hdr "created_at" (icon "ph-clock" >> " Time")
+            case metric of
+              Chars -> do
+                hdr "input_chars" (icon "ph-download-simple" >> " Input Chars")
+                hdr "output_chars" (icon "ph-upload-simple" >> " Output Chars")
+              Tokens -> do
+                hdr "prompt_tokens" (icon "ph-arrow-line-down" >> " In Tok")
+                hdr "completion_tokens" (icon "ph-arrow-line-up" >> " Out Tok")
+                hdr "total_tokens" (icon "ph-equals" >> " Total")
+            hdr "model" (icon "ph-cpu" >> " Model")
+            hdr "alias_name" (icon "ph-tag" >> " Alias")
+            hdr "response_status" (icon "ph-check-circle" >> " Status")
+            hdr "latency_ms" (icon "ph-timer" >> " Duration")
+            hdr "request_body" (icon "ph-paper-plane-right" >> " Request")
+            hdr "response_body" (icon "ph-paper-plane-left" >> " Response")
+        tbody_ $ mapM_ (requestRow metric) requests
+      pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
+      when (not (null aliasUsages)) aliasChartScripts
+      requestSoundScripts
+      script_ clickScript
 
 requestRow :: MetricView -> LlmRequest -> Html ()
 requestRow metric r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrId r))] $ do

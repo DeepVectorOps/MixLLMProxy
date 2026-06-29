@@ -12,7 +12,7 @@ import DB
   , getAliases, getAliasById, insertAlias, updateAlias, deleteAlias
   )
 import Common
-  ( icon, showT, basePage, aliasBadge, pageHeader, hostFromHeader
+  ( icon, showT, basePage, aliasBadge, pageHeader, pageToolbar, hostFromHeader
   , optionalIntFormParam, limitValueAttr
   , aliasEditUrl, aliasUpdateUrl, aliasDuplicateUrl, aliasDeleteUrl
   , endpointEditUrl, endpointUpdateUrl, endpointDeleteUrl
@@ -192,8 +192,9 @@ aliasToForm a = AliasForm
 
 aliasesPage :: T.Text -> [LlmEndpoint] -> [LlmAlias] -> PageState -> Html ()
 aliasesPage host endpoints aliases state = basePage "MixLLMProxy — Aliases" $ do
-  div_ [class_ "container"] $ do
-    pageHeader host Nothing
+  pageHeader
+  div_ [class_ "page-content"] $ do
+    pageToolbar host Nothing
     p_ [class_ "subtitle"] "Configure downstream endpoints and route aliases to them"
 
     endpointsSection endpoints state
