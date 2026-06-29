@@ -11,7 +11,7 @@ import ChartJson (chartPollSeconds, chartSubtitle, loadChartJson)
 import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
 import Common
-  ( icon, showT, showWithCommas, showCompact, maybeDash, basePage
+  ( icon, showT, showWithCommas, showCompact, maybeCompact, maybeTextLenCompact, maybeDash, basePage
   , queryParamDefault, formParamDefault, aliasBadge, aliasBadgeWithEdit, pageHeader, hostFromHeader
   )
 import qualified Data.Text as T
@@ -30,8 +30,18 @@ fmtLatency ms
   | ms >= 1000 = T.pack (show (fromIntegral (round (ms / 100) :: Int) / 10)) <> "s"
   | otherwise  = showT (round ms :: Int) <> "ms"
 
-rateLimitSection :: T.Text -> T.Text -> T.Text -> [AliasUsage] -> Html ()
-rateLimitSection sortBy sortDir duration aliasUsages =
+data MetricView = Tokens | Chars deriving (Eq)
+
+parseMetric :: T.Text -> MetricView
+parseMetric "chars" = Chars
+parseMetric _ = Tokens
+
+metricParam :: MetricView -> T.Text
+metricParam Tokens = "tokens"
+metricParam Chars = "chars"
+
+rateLimitSection :: T.Text -> T.Text -> T.Text -> MetricView -> [AliasUsage] -> Html ()
+rateLimitSection sortBy sortDir duration metric aliasUsages =
   if null aliasUsages
     then ""
     else let (active, unused) = partition ((> 0) . auRequestCount) aliasUsages
@@ -39,7 +49,7 @@ rateLimitSection sortBy sortDir duration aliasUsages =
       h2_ (icon "ph-speedometer" >> " Rate Limits (rolling 24h)")
       p_ [class_ "rate-limits-subtitle"] (toHtml chartSubtitle)
       div_ [class_ "rate-limit-grid"] $ do
-        mapM_ (rateLimitCard sortBy sortDir duration) active
+        mapM_ (rateLimitCard sortBy sortDir duration metric) active
         unless (null unused) $ unusedAliasesCard unused
 
 rateLimitAliasHeader :: Maybe T.Text -> LlmAlias -> Html ()
@@ -54,12 +64,12 @@ unusedAliasesCard unused =
     div_ [class_ "unused-aliases-badges"] $
       mapM_ (rateLimitAliasHeader Nothing . auAlias) unused
 
-rateLimitCard :: T.Text -> T.Text -> T.Text -> AliasUsage -> Html ()
-rateLimitCard sortBy sortDir duration u = do
+rateLimitCard :: T.Text -> T.Text -> T.Text -> MetricView -> AliasUsage -> Html ()
+rateLimitCard sortBy sortDir duration metric u = do
   let a = auAlias u
       reqCount = auRequestCount u
       tokCount = auTokenCount u
-      filterUrl = makeUrl 1 sortBy sortDir "alias" (laName a) duration
+      filterUrl = makeUrl 1 sortBy sortDir "alias" (laName a) duration metric
   div_ [class_ "rate-limit-card"] $ do
     div_ [class_ "rate-limit-name"] $
       rateLimitAliasHeader (Just filterUrl) a
@@ -120,7 +130,9 @@ uiRoutes env = do
     searchField <- queryParamDefault "search_field" ("any" :: T.Text)
     searchQuery <- queryParamDefault "search_query" ("" :: T.Text)
     duration <- queryParamDefault "duration" ("" :: T.Text)
-    let perPage = 25
+    metricTxt <- queryParamDefault "metric" ("tokens" :: T.Text)
+    let metric = parseMetric metricTxt
+        perPage = 25
     let offset = (pageNum - 1) * perPage
     requests <- liftIO $ withPool env $ \conn ->
       getRecentRequestsFiltered conn perPage offset sortBy sortDir searchField searchQuery duration
@@ -130,7 +142,7 @@ uiRoutes env = do
     aliasUsages <- liftIO $ withPool env $ \conn -> getAliasesWithUsage conn
     settings <- liftIO $ readIORef (envSettings env)
     host <- header "Host"
-    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages total aliasUsages sortBy sortDir searchField searchQuery duration settings
+    html $ renderText $ basePage "MixLLMProxy" $ page host requests pageNum totalPages total aliasUsages sortBy sortDir searchField searchQuery duration metric settings
   get "/ui/request/:id" $ do
     rid <- pathParam "id"
     mreq <- liftIO $ withPool env $ \conn -> getRequest conn rid
@@ -155,8 +167,8 @@ uiRoutes env = do
     liftIO $ modifyIORef' (envSettings env) $ \s -> s { gsSlowLimit = limit }
     redirect "/ui/"
 
-makeUrl :: Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text
-makeUrl pageNum sortBy sortDir searchField searchQuery duration =
+makeUrl :: Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> T.Text
+makeUrl pageNum sortBy sortDir searchField searchQuery duration metric =
   T.concat
     [ "/ui/?page=", showT pageNum
     , "&sort_by=", sortBy
@@ -164,13 +176,14 @@ makeUrl pageNum sortBy sortDir searchField searchQuery duration =
     , "&search_field=", searchField
     , "&search_query=", searchQuery
     , "&duration=", duration
+    , "&metric=", metricParam metric
     ]
 
-sortableHeader :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html () -> Html ()
-sortableHeader targetCol currentSortBy currentSortDir currentSearchField currentSearchQuery duration content = do
+sortableHeader :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> Html () -> Html ()
+sortableHeader targetCol currentSortBy currentSortDir currentSearchField currentSearchQuery duration metric content = do
   let isSorted = currentSortBy == targetCol
       newDir = if isSorted && currentSortDir == "asc" then "desc" else "asc"
-      queryStr = makeUrl 1 targetCol newDir currentSearchField currentSearchQuery duration
+      queryStr = makeUrl 1 targetCol newDir currentSearchField currentSearchQuery duration metric
       indicator :: T.Text
       indicator = if isSorted
                     then if currentSortDir == "asc" then " ▲" else " ▼"
@@ -180,8 +193,8 @@ sortableHeader targetCol currentSortBy currentSortDir currentSearchField current
       content
       toHtml indicator
 
-searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
-searchForm searchField searchQuery sortBy sortDir duration =
+searchForm :: T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> Html ()
+searchForm searchField searchQuery sortBy sortDir duration metric =
   div_ [class_ "search-card"] $ do
     form_ [action_ "/ui/", method_ "get", class_ "search-form"] $ do
       div_ [class_ "search-fields-row"] $ do
@@ -198,15 +211,26 @@ searchForm searchField searchQuery sortBy sortDir duration =
         input_ [type_ "text", name_ "duration", value_ duration, placeholder_ "All time (e.g. 10m, 1h)", class_ "input search-age-input"]
         input_ [type_ "hidden", name_ "sort_by", value_ sortBy]
         input_ [type_ "hidden", name_ "sort_dir", value_ sortDir]
+        input_ [type_ "hidden", name_ "metric", value_ (metricParam metric)]
         button_ [type_ "submit", class_ "btn"] "Filter"
         a_ [href_ "/ui/", class_ "btn-cancel"] "Clear"
-    div_ [class_ "quick-age-row"] $ do
+    div_ [class_ "quick-filter-row"] $ do
+      span_ "Show:"
+      let metricLink :: T.Text -> MetricView -> Html ()
+          metricLink label m =
+            let active = metric == m
+                linkClass = if active then "quick-link quick-link-active" else "quick-link quick-link-inactive"
+                url = makeUrl 1 sortBy sortDir searchField searchQuery duration m
+            in a_ [href_ url, class_ linkClass] (toHtml label)
+      metricLink "Tokens" Tokens
+      metricLink "Chars" Chars
+    div_ [class_ "quick-filter-row"] $ do
       span_ "Quick age:"
       let quickLink :: T.Text -> T.Text -> Html ()
           quickLink label dur =
             let active = duration == dur
                 linkClass = if active then "quick-link quick-link-active" else "quick-link quick-link-inactive"
-                url = makeUrl 1 sortBy sortDir searchField searchQuery dur
+                url = makeUrl 1 sortBy sortDir searchField searchQuery dur metric
             in a_ [href_ url, class_ linkClass] (toHtml label)
       quickLink "All" ""
       quickLink "10m" "10m"
@@ -264,50 +288,56 @@ settingsSection s = do
             button_ [type_ "submit", class_ "btn-red"] "Disable"
           else ""
 
-page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> GlobalSettings -> Html ()
-page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration settings = do
+page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> GlobalSettings -> Html ()
+page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration metric settings = do
     pageHeader (hostFromHeader host) (Just $ div_ [class_ "truncate-actions"] $ do
       form_ [action_ "/ui/truncate-older", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Delete all requests older than 1 hour?')"] (icon "ph-trash" >> " Truncate older than 1h")
       form_ [action_ "/ui/truncate", method_ "post", class_ "form-inline"] $
         button_ [type_ "submit", class_ "btn-danger", onclick_ "return confirm('Wipe all logged requests?')"] (icon "ph-trash" >> " Truncate"))
-    rateLimitSection sortBy sortDir duration aliasUsages
+    rateLimitSection sortBy sortDir duration metric aliasUsages
     settingsSection settings
-    searchForm searchField searchQuery sortBy sortDir duration
-    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
+    searchForm searchField searchQuery sortBy sortDir duration metric
+    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
     table_ [class_ "requests"] $ do
       thead_ $ do
         tr_ $ do
-          let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery duration label
+          let hdr col label = sortableHeader col sortBy sortDir searchField searchQuery duration metric label
           hdr "id" "#"
           hdr "created_at" (icon "ph-clock" >> " Time")
-          hdr "input_chars" (icon "ph-download-simple" >> " Input Chars")
-          hdr "output_chars" (icon "ph-upload-simple" >> " Output Chars")
+          case metric of
+            Chars -> do
+              hdr "input_chars" (icon "ph-download-simple" >> " Input Chars")
+              hdr "output_chars" (icon "ph-upload-simple" >> " Output Chars")
+            Tokens -> do
+              hdr "prompt_tokens" (icon "ph-arrow-line-down" >> " In Tok")
+              hdr "completion_tokens" (icon "ph-arrow-line-up" >> " Out Tok")
+              hdr "total_tokens" (icon "ph-equals" >> " Total")
           hdr "model" (icon "ph-cpu" >> " Model")
           hdr "alias_name" (icon "ph-tag" >> " Alias")
-          hdr "prompt_tokens" (icon "ph-arrow-line-down" >> " In Tok")
-          hdr "completion_tokens" (icon "ph-arrow-line-up" >> " Out Tok")
-          hdr "total_tokens" (icon "ph-equals" >> " Total")
           hdr "response_status" (icon "ph-check-circle" >> " Status")
           hdr "latency_ms" (icon "ph-timer" >> " Duration")
           hdr "request_body" (icon "ph-paper-plane-right" >> " Request")
           hdr "response_body" (icon "ph-paper-plane-left" >> " Response")
-      tbody_ $ mapM_ requestRow requests
-    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration
+      tbody_ $ mapM_ (requestRow metric) requests
+    pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
     when (not (null aliasUsages)) aliasChartScripts
     script_ clickScript
 
-requestRow :: LlmRequest -> Html ()
-requestRow r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrId r))] $ do
+requestRow :: MetricView -> LlmRequest -> Html ()
+requestRow metric r = tr_ [class_ "req-row", data_ "href" ("/ui/request/" <> showT (lrId r))] $ do
   td_ (toHtml (showT (lrId r)))
   td_ [class_ "time"] (toHtml (T.take 19 (showT (lrCreatedAt r))))
-  td_ [class_ "len"] (toHtml (maybeDash (fmap T.length (lrRequestBody r))))
-  td_ [class_ "len"] (toHtml (maybeDash (fmap T.length (lrResponseBody r))))
+  case metric of
+    Chars -> do
+      td_ [class_ "len"] (toHtml (maybeTextLenCompact (lrRequestBody r)))
+      td_ [class_ "len"] (toHtml (maybeTextLenCompact (lrResponseBody r)))
+    Tokens -> do
+      td_ [class_ "len"] (toHtml (maybeCompact (lrPromptTokens r)))
+      td_ [class_ "len"] (toHtml (maybeCompact (lrCompletionTokens r)))
+      td_ [class_ "len"] (toHtml (maybeCompact (lrTotalTokens r)))
   td_ [class_ "model"] (renderModel (lrModel r))
   td_ [class_ "alias"] (renderAlias (lrAliasName r))
-  td_ [class_ "len"] (toHtml (maybeDash (lrPromptTokens r)))
-  td_ [class_ "len"] (toHtml (maybeDash (lrCompletionTokens r)))
-  td_ [class_ "len"] (toHtml (maybeDash (lrTotalTokens r)))
   td_ [class_ (statusClass (lrResponseStatus r))] (toHtml (maybeDash (lrResponseStatus r)))
   td_ [class_ "latency"] (renderLatency (lrLatencyMs r))
   td_ [class_ "req"] (toHtml (fromMaybe "-" (clip 80 (lrRequestBody r))))
@@ -328,9 +358,9 @@ detailPage r = do
       detailCell "ph-link" "Endpoint" (toHtml (lrEndpoint r))
       detailCell "ph-cpu" "Model" (renderModel (lrModel r))
       detailCell "ph-tag" "Alias" (renderAlias (lrAliasName r))
-      detailCell "ph-arrow-line-down" "Prompt tokens" (toHtml (maybeDash (lrPromptTokens r)))
-      detailCell "ph-arrow-line-up" "Completion tokens" (toHtml (maybeDash (lrCompletionTokens r)))
-      detailCell "ph-equals" "Total tokens" (toHtml (maybeDash (lrTotalTokens r)))
+      detailCell "ph-arrow-line-down" "Prompt tokens" (toHtml (maybeCompact (lrPromptTokens r)))
+      detailCell "ph-arrow-line-up" "Completion tokens" (toHtml (maybeCompact (lrCompletionTokens r)))
+      detailCell "ph-equals" "Total tokens" (toHtml (maybeCompact (lrTotalTokens r)))
       detailCell "ph-check-circle" "Status" (toHtml (maybeDash (lrResponseStatus r)))
       detailCell "ph-timer" "Duration" (renderLatency (lrLatencyMs r))
     script_ [src_ "https://cdn.jsdelivr.net/npm/json-formatter-js@2"] ("" :: T.Text)
@@ -415,10 +445,10 @@ detailJsonScript = T.intercalate "\n"
   , "})();"
   ]
 
-pagination :: Int -> Int -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> Html ()
-pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration = div_ [class_ "pagination"] $ do
-  let prevUrl = makeUrl (pageNum - 1) sortBy sortDir searchField searchQuery duration
-      nextUrl = makeUrl (pageNum + 1) sortBy sortDir searchField searchQuery duration
+pagination :: Int -> Int -> Int -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> Html ()
+pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric = div_ [class_ "pagination"] $ do
+  let prevUrl = makeUrl (pageNum - 1) sortBy sortDir searchField searchQuery duration metric
+      nextUrl = makeUrl (pageNum + 1) sortBy sortDir searchField searchQuery duration metric
   if pageNum > 1
     then a_ [href_ prevUrl] (icon "caret-left" >> " Prev")
     else span_ [class_ "disabled"] (icon "caret-left" >> " Prev")

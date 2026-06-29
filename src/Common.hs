@@ -6,6 +6,8 @@ module Common
   , showT
   , showWithCommas
   , showCompact
+  , maybeCompact
+  , maybeTextLenCompact
   , maybeDash
   , faviconSvg
   , baseHead
@@ -46,9 +48,9 @@ showWithCommas = prettyF (PrettyCfg 0 (Just ',') '.') . (realToFrac :: Real a =>
 
 showCompact :: (Integral a, Show a) => a -> T.Text
 showCompact n
-  | n >= 1000000 = fmtScaled n 1000000 "M"
-  | n >= 10000   = fmtScaled n 1000 "k"
-  | otherwise      = showT n
+  | n >= 1000000 = fmtScaled n 1000000 "m"
+  | n >= 1000    = fmtScaled n 1000 "k"
+  | otherwise    = showT n
   where
     fmtScaled :: Integral a => a -> a -> T.Text -> T.Text
     fmtScaled val scale suffix =
@@ -56,6 +58,12 @@ showCompact n
           whole = tenths `div` 10
           frac = tenths `mod` 10
       in if frac == 0 then showT whole <> suffix else showT whole <> "." <> showT frac <> suffix
+
+maybeCompact :: Maybe Int -> T.Text
+maybeCompact = maybe "-" showCompact
+
+maybeTextLenCompact :: Maybe T.Text -> T.Text
+maybeTextLenCompact = maybe "-" (showCompact . T.length)
 
 maybeDash :: Show a => Maybe a -> T.Text
 maybeDash = maybe "-" showT

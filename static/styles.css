@@ -12,6 +12,11 @@ h1 a { color: inherit; text-decoration: none; }
 table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
 th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #21262d; color: #8b949e; font-weight: 600; white-space: nowrap; }
 td { padding: 8px 12px; border-bottom: 1px solid #21262d; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.requests th,
+table.requests td { color: #ffffff; }
+table.requests td.status-ok { color: #3fb950; }
+table.requests td.status-err { color: #d29922; }
+table.requests td.status-fail { color: #f85149; }
 a { color: #58a6ff; text-decoration: none; }
 
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
@@ -22,7 +27,7 @@ a { color: #58a6ff; text-decoration: none; }
 .nav-btn:hover { background: #1a2130; border-color: #58a6ff; }
 .req-row { cursor: pointer; }
 .req, .resp { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.len { white-space: nowrap; color: #8b949e; font-size: 11px; }
+.len { white-space: nowrap; }
 .latency { white-space: nowrap; }
 .model { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
 .alias { white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
@@ -153,7 +158,7 @@ strong { color: #e6edf3; font-weight: 600; font-size: 13px; }
 .search-fields-row { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: nowrap; }
 .search-query-input { width: 240px; }
 .search-age-input { width: 150px; }
-.quick-age-row { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 8px; font-size: 12px; color: #8b949e; }
+.quick-filter-row { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 8px; font-size: 12px; color: #8b949e; }
 
 .settings-row { display: flex; gap: 12px; margin: 12px 0; flex-wrap: wrap; justify-content: center; }
 .settings-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; }
