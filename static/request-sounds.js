@@ -28,6 +28,7 @@
   var playing = false;
   var nextPlayAt = 0;
   var syncing = false;
+  var uiDirty = false;
 
   function $(id) {
     return document.getElementById(id);
@@ -103,8 +104,19 @@
 
     var badge = $('sound-status-badge');
     if (badge) {
-      badge.textContent = enabled ? 'ON' : 'OFF';
-      badge.className = 'badge ' + (enabled ? 'badge-green' : 'badge-red');
+      if (!enabled) {
+        badge.textContent = 'OFF';
+        badge.className = 'badge badge-red';
+      } else {
+        var c = getContext();
+        if (c && c.state === 'suspended') {
+          badge.textContent = 'ON (Click page to active)';
+          badge.className = 'badge badge-yellow';
+        } else {
+          badge.textContent = 'ON';
+          badge.className = 'badge badge-green';
+        }
+      }
     }
 
     var filters = $('sound-event-filters');
@@ -124,15 +136,20 @@
       var Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return null;
       ctx = new Ctx();
+      ctx.onstatechange = function () {
+        syncControls();
+      };
     }
     return ctx;
   }
 
   function resumeContext() {
+    if (!isEnabled()) return Promise.resolve();
     var c = getContext();
     if (!c) return Promise.resolve();
     if (c.state === 'suspended') {
       return c.resume().then(function () {
+        syncControls();
         drainQueue();
       });
     }
@@ -346,13 +363,19 @@
   }
 
   function fetchEvents() {
-    if (document.hidden) return;
+    if (document.hidden && !isEnabled()) return;
     fetch('/ui/api/request-events')
       .then(function (r) { return r.json(); })
       .then(function (data) {
         if (!data || !data.requests) return;
-        if (applySnapshot(data.requests) && onFirstPage()) {
-          refreshPageData();
+        var changed = applySnapshot(data.requests);
+        if (uiDirty || (changed && onFirstPage())) {
+          if (document.hidden) {
+            if (changed) uiDirty = true;
+          } else {
+            refreshPageData();
+            uiDirty = false;
+          }
         }
       })
       .catch(function () {});
