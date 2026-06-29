@@ -116,6 +116,17 @@ strong { color: #e6edf3; font-weight: 600; font-size: 13px; }
 .unused-aliases-badges { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-content: flex-start; }
 .alias-limits { white-space: nowrap; color: #8b949e; font-size: 12px; }
 
+.section-title { color: #58a6ff; font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+.section-desc { color: #8b949e; font-size: 12px; margin: 0 0 12px; }
+.subsection-title { color: #8b949e; font-size: 13px; margin: 20px 0 8px; font-weight: 600; }
+.aliases-section { margin-top: 24px; }
+.config-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+.config-table th { text-align: left; padding: 8px 12px; border-bottom: 1px solid #21262d; color: #8b949e; font-weight: 600; white-space: nowrap; }
+.config-table td { padding: 8px 12px; border-bottom: 1px solid #21262d; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.endpoint-name strong { color: #c9d1d9; }
+.endpoint-url code { color: #58a6ff; font-size: 12px; }
+.alias-endpoint { color: #8b949e; font-size: 12px; }
+
 /* --- Shared UI patterns extracted from inline styles --- */
 
 .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px 18px; }

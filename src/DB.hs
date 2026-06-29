@@ -15,7 +15,15 @@ module DB
   , truncateRequests
   , truncateRequestsOlderThan
   , LlmRequest(..)
+  , LlmEndpoint(..)
   , LlmAlias(..)
+  , ResolvedAlias(..)
+  , getEndpoints
+  , getEndpointById
+  , insertEndpoint
+  , updateEndpoint
+  , deleteEndpoint
+  , countAliasesForEndpoint
   , getAliases
   , getAliasesWithUsage
   , AliasUsage(..)
@@ -73,11 +81,22 @@ data LlmRequest = LlmRequest
 instance FromRow LlmRequest where
   fromRow = LlmRequest <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
 
+data LlmEndpoint = LlmEndpoint
+  { leId :: Int
+  , leName :: Text
+  , leUrl :: Text
+  , leApiKey :: Text
+  , leCreatedAt :: UTCTime
+  } deriving (Show, Generic)
+
+instance FromRow LlmEndpoint where
+  fromRow = LlmEndpoint <$> field <*> field <*> field <*> field <*> field
+
 data LlmAlias = LlmAlias
   { laId :: Int
   , laName :: Text
-  , laEndpointUrl :: Text
-  , laApiKey :: Text
+  , laEndpointId :: Int
+  , laEndpointName :: Text
   , laModel :: Text
   , laCreatedAt :: UTCTime
   , laDailyTokenLimit :: Maybe Int
@@ -86,6 +105,15 @@ data LlmAlias = LlmAlias
 
 instance FromRow LlmAlias where
   fromRow = LlmAlias <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
+
+data ResolvedAlias = ResolvedAlias
+  { raAlias :: LlmAlias
+  , raEndpointUrl :: Text
+  , raApiKey :: Text
+  } deriving (Show, Generic)
+
+instance FromRow ResolvedAlias where
+  fromRow = ResolvedAlias <$> fromRow <*> field <*> field
 
 data AliasUsage = AliasUsage
   { auAlias :: LlmAlias
@@ -334,37 +362,79 @@ countRequestsFiltered conn searchField searchQuery duration = do
   [Only c] <- query conn sql filterParams
   pure c
 
-aliasColumns :: Query
-aliasColumns = fromString $ cs [text|
-  id, name, endpoint_url, api_key, model, created_at, daily_token_limit, daily_request_limit
+endpointColumns :: Query
+endpointColumns = fromString $ cs [text|
+  id, name, url, api_key, created_at
 |]
 
+endpointSelect :: Query
+endpointSelect = "SELECT " <> endpointColumns <> " FROM endpoints"
+
+getEndpoints :: Connection -> IO [LlmEndpoint]
+getEndpoints conn = query_ conn (endpointSelect <> " ORDER BY created_at DESC")
+
+getEndpointById :: Connection -> Int -> IO (Maybe LlmEndpoint)
+getEndpointById conn eid =
+  queryOne conn (endpointSelect <> " WHERE id = ?") (Only eid)
+
+insertEndpoint :: Connection -> Text -> Text -> Text -> IO Int
+insertEndpoint conn name url key = do
+  [Only eid] <- query conn (fromString $ cs [text|
+    INSERT INTO endpoints (name, url, api_key)
+    VALUES (?, ?, ?)
+    RETURNING id
+  |]) (name, url, key)
+  pure eid
+
+updateEndpoint :: Connection -> Int -> Text -> Text -> Text -> IO ()
+updateEndpoint conn eid name url key =
+  void $ execute conn (fromString $ cs [text|
+    UPDATE endpoints SET name = ?, url = ?, api_key = ? WHERE id = ?
+  |]) (name, url, key, eid)
+
+deleteEndpoint :: Connection -> Int -> IO ()
+deleteEndpoint conn eid =
+  void $ execute conn "DELETE FROM endpoints WHERE id = ?" (Only eid)
+
+countAliasesForEndpoint :: Connection -> Int -> IO Int
+countAliasesForEndpoint conn eid = do
+  [Only c] <- query conn "SELECT COUNT(*) FROM aliases WHERE endpoint_id = ?" (Only eid)
+  pure c
+
+aliasColumns :: Query
+aliasColumns = fromString $ cs [text|
+  a.id, a.name, a.endpoint_id, e.name, a.model, a.created_at, a.daily_token_limit, a.daily_request_limit
+|]
+
+aliasFrom :: Query
+aliasFrom = " FROM aliases a JOIN endpoints e ON e.id = a.endpoint_id"
+
 aliasSelect :: Query
-aliasSelect = "SELECT " <> aliasColumns <> " FROM aliases"
+aliasSelect = "SELECT " <> aliasColumns <> aliasFrom
 
 getAliases :: Connection -> IO [LlmAlias]
-getAliases conn = query_ conn (aliasSelect <> " ORDER BY created_at DESC")
+getAliases conn = query_ conn (aliasSelect <> " ORDER BY a.created_at DESC")
 
-getAliasByName :: Connection -> Text -> IO (Maybe LlmAlias)
+getAliasByName :: Connection -> Text -> IO (Maybe ResolvedAlias)
 getAliasByName conn name =
-  queryOne conn (aliasSelect <> " WHERE name = ?") (Only name)
+  queryOne conn ("SELECT " <> aliasColumns <> ", e.url, e.api_key" <> aliasFrom <> " WHERE a.name = ?") (Only name)
 
 getAliasById :: Connection -> Int -> IO (Maybe LlmAlias)
 getAliasById conn aid =
-  queryOne conn (aliasSelect <> " WHERE id = ?") (Only aid)
+  queryOne conn (aliasSelect <> " WHERE a.id = ?") (Only aid)
 
-insertAlias :: Connection -> Text -> Text -> Text -> Text -> Maybe Int -> Maybe Int -> IO ()
-insertAlias conn name url key model tokenLimit reqLimit =
+insertAlias :: Connection -> Text -> Int -> Text -> Maybe Int -> Maybe Int -> IO ()
+insertAlias conn name endpointId model tokenLimit reqLimit =
   void $ execute conn (fromString $ cs [text|
-    INSERT INTO aliases (name, endpoint_url, api_key, model, daily_token_limit, daily_request_limit)
-    VALUES (?, ?, ?, ?, ?, ?)
-  |]) (name, url, key, model, tokenLimit, reqLimit)
+    INSERT INTO aliases (name, endpoint_id, model, daily_token_limit, daily_request_limit)
+    VALUES (?, ?, ?, ?, ?)
+  |]) (name, endpointId, model, tokenLimit, reqLimit)
 
-updateAlias :: Connection -> Int -> Text -> Text -> Text -> Text -> Maybe Int -> Maybe Int -> IO ()
-updateAlias conn aid name url key model tokenLimit reqLimit =
+updateAlias :: Connection -> Int -> Text -> Int -> Text -> Maybe Int -> Maybe Int -> IO ()
+updateAlias conn aid name endpointId model tokenLimit reqLimit =
   void $ execute conn (fromString $ cs [text|
-    UPDATE aliases SET name = ?, endpoint_url = ?, api_key = ?, model = ?, daily_token_limit = ?, daily_request_limit = ? WHERE id = ?
-  |]) (name, url, key, model, tokenLimit, reqLimit, aid)
+    UPDATE aliases SET name = ?, endpoint_id = ?, model = ?, daily_token_limit = ?, daily_request_limit = ? WHERE id = ?
+  |]) (name, endpointId, model, tokenLimit, reqLimit, aid)
 
 deleteAlias :: Connection -> Int -> IO ()
 deleteAlias conn aid =
@@ -384,9 +454,10 @@ getAliasUsage24h conn aliasName = do
 getAliasesWithUsage :: Connection -> IO [AliasUsage]
 getAliasesWithUsage conn =
   query_ conn (fromString $ cs [text|
-    SELECT a.id, a.name, a.endpoint_url, a.api_key, a.model, a.created_at, a.daily_token_limit, a.daily_request_limit,
+    SELECT a.id, a.name, a.endpoint_id, e.name, a.model, a.created_at, a.daily_token_limit, a.daily_request_limit,
            COALESCE(r.req_count, 0), COALESCE(r.token_count, 0)
     FROM aliases a
+    JOIN endpoints e ON e.id = a.endpoint_id
     LEFT JOIN (
       SELECT alias_name, COUNT(*) AS req_count, COALESCE(SUM(total_tokens), 0) AS token_count
       FROM llm_requests

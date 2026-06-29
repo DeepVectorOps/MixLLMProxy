@@ -12,6 +12,7 @@ import DB
   , connectDB
   , getAliasRequestChartData
   , getAliasByName
+  , insertEndpoint
   , insertAlias
   , insertRequest
   , deleteAlias
@@ -120,6 +121,7 @@ cleanupChartTests :: Connection -> IO ()
 cleanupChartTests conn = do
   void $ execute_ conn "DELETE FROM llm_requests WHERE alias_name LIKE '_chart_test_%'"
   void $ execute_ conn "DELETE FROM aliases WHERE name LIKE '_chart_test_%'"
+  void $ execute_ conn "DELETE FROM endpoints WHERE name LIKE '_chart_test_%'"
 
 runChartDbTest :: IO ()
 runChartDbTest = do
@@ -127,7 +129,8 @@ runChartDbTest = do
   cleanupChartTests conn
   now <- getCurrentTime
   let aliasName = "_chart_test_" <> T.pack (show (floor (utcTimeToPOSIXSeconds now) :: Integer))
-  insertAlias conn aliasName "http://test" "key" "model" Nothing Nothing
+  endpointId <- insertEndpoint conn (aliasName <> "-ep") "http://test" "key"
+  insertAlias conn aliasName endpointId "model" Nothing Nothing
   alias <- getAliasByName conn aliasName >>= \case
     Just a -> pure a
     Nothing -> error "inserted chart test alias not found"

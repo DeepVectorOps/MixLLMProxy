@@ -23,6 +23,9 @@ module Common
   , aliasUpdateUrl
   , aliasDuplicateUrl
   , aliasDeleteUrl
+  , endpointEditUrl
+  , endpointUpdateUrl
+  , endpointDeleteUrl
   , aliasBadge
   , aliasBadgeWithEdit
   , aliasColor
@@ -133,6 +136,18 @@ aliasDuplicateUrl aid = aliasPath aid "/duplicate"
 
 aliasDeleteUrl :: Int -> T.Text
 aliasDeleteUrl aid = aliasPath aid "/delete"
+
+endpointPath :: Int -> T.Text -> T.Text
+endpointPath eid suffix = "/ui/aliases/endpoints/" <> showT eid <> suffix
+
+endpointEditUrl :: Int -> T.Text
+endpointEditUrl eid = endpointPath eid "/edit"
+
+endpointUpdateUrl :: Int -> T.Text
+endpointUpdateUrl eid = endpointPath eid "/update"
+
+endpointDeleteUrl :: Int -> T.Text
+endpointDeleteUrl eid = endpointPath eid "/delete"
 
 hashText :: T.Text -> Int
 hashText = T.foldl' (\h c -> h * 33 + fromEnum c) 5381

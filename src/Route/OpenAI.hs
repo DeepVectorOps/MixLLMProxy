@@ -28,7 +28,7 @@ import qualified Data.CaseInsensitive as CI
 import Data.Time.Clock (getCurrentTime, diffUTCTime, addUTCTime)
 import Database.PostgreSQL.Simple (Connection)
 import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
-import DB (insertPendingRequest, updateRequest, getAliasByName, getAliasUsage24h, LlmAlias(..))
+import DB (insertPendingRequest, updateRequest, getAliasByName, getAliasUsage24h, LlmAlias(..), ResolvedAlias(..))
 import Common (showT)
 import Data.IORef (readIORef, atomicModifyIORef', newIORef)
 import Network.HTTP.Types.Status (status429, status503)
@@ -75,7 +75,8 @@ openAIRoutes env = do
           Just modelName -> liftIO $ withPool env $ \conn -> getAliasByName conn modelName
           Nothing -> pure Nothing
         case mAlias of
-          Just alias -> do
+          Just resolved -> do
+            let alias = raAlias resolved
             mBlocked <- liftIO $ withPool env $ \conn -> checkRateLimit conn alias
             case mBlocked of
               Just errMsg -> jsonError status429 errMsg "rate_limit_exceeded"
@@ -87,7 +88,7 @@ openAIRoutes env = do
                 let reqText = Just $ cs overriddenBody
                 rid <- liftIO $ withPool env $ \conn ->
                   insertPendingRequest conn endpoint "POST" reqText (Just (laModel alias)) (Just (laName alias))
-                proxyAndLog env rid (laEndpointUrl alias) (laApiKey alias) (Just (laName alias)) overriddenBody
+                proxyAndLog env rid (raEndpointUrl resolved) (raApiKey resolved) (Just (laName alias)) overriddenBody
           Nothing -> do
             status status400
             json $ A.object ["error" A..= ("no alias found for model: " <> maybe "(missing)" id reqModel)]
