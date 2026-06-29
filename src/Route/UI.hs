@@ -458,10 +458,11 @@ requestSoundScripts = do
 
 clickScript :: T.Text
 clickScript = T.intercalate "\n"
-  [ "document.querySelectorAll('.req-row').forEach(function(row){"
-  , "  row.addEventListener('click',function(){"
-  , "    window.location=this.getAttribute('data-href');"
-  , "  });"
+  [ "document.addEventListener('click', function(e) {"
+  , "  var row = e.target.closest('.req-row');"
+  , "  if (row && e.target.tagName !== 'A' && e.target.tagName !== 'BUTTON' && !e.target.closest('a') && !e.target.closest('button')) {"
+  , "    window.location = row.getAttribute('data-href');"
+  , "  }"
   , "});"
   ]
 

@@ -43,7 +43,12 @@
       var id = 'chart-' + a.id;
       var el = document.getElementById(id);
       if (!el) return;
-      if (!charts[id]) charts[id] = new Chart(el, chartOptions(a.color));
+      if (!charts[id]) {
+        charts[id] = new Chart(el, chartOptions(a.color));
+      } else if (charts[id].canvas !== el) {
+        charts[id].destroy();
+        charts[id] = new Chart(el, chartOptions(a.color));
+      }
       var ds = charts[id].data.datasets[0];
       charts[id].data.labels = data.labels;
       ds.data = a.counts;
@@ -60,6 +65,8 @@
       .then(updateCharts)
       .catch(function () {});
   }
+
+  window.fetchCharts = fetchCharts;
 
   function startPolling() {
     if (pollTimer) clearInterval(pollTimer);

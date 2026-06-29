@@ -131,19 +131,46 @@
   function resumeContext() {
     var c = getContext();
     if (!c) return Promise.resolve();
-    if (c.state === 'suspended') return c.resume();
+    if (c.state === 'suspended') {
+      return c.resume().then(function () {
+        drainQueue();
+      });
+    }
     return Promise.resolve();
   }
 
   function scheduleTone(opts) {
-    playQueue.push(opts);
+    var item = {
+      opts: opts,
+      time: Date.now()
+    };
+    playQueue.push(item);
+    if (playQueue.length > 5) {
+      playQueue.shift();
+    }
     drainQueue();
   }
 
   function drainQueue() {
     if (playing || !playQueue.length || !isEnabled()) return;
     var c = getContext();
-    if (!c || c.state !== 'running') return;
+    if (!c) return;
+
+    if (c.state !== 'running') {
+      // Discard stale tones to prevent a burst of sounds when resuming
+      var nowTime = Date.now();
+      playQueue = playQueue.filter(function (item) {
+        return nowTime - item.time < 2000;
+      });
+      return;
+    }
+
+    var item = playQueue[0];
+    if (Date.now() - item.time > 2000) {
+      playQueue.shift();
+      setTimeout(drainQueue, 0);
+      return;
+    }
 
     var now = c.currentTime;
     if (now < nextPlayAt) {
@@ -152,7 +179,8 @@
     }
 
     playing = true;
-    playTone(playQueue.shift());
+    playQueue.shift();
+    playTone(item.opts);
     nextPlayAt = c.currentTime + MIN_GAP_S;
     setTimeout(function () {
       playing = false;
@@ -170,19 +198,28 @@
     var osc = c.createOscillator();
     var gain = c.createGain();
 
+    var peakTime = Math.min(0.01, duration * 0.2);
+    var holdTime = duration * 0.6;
+    if (holdTime < peakTime) holdTime = peakTime;
+
     osc.type = opts.type || 'triangle';
     osc.frequency.setValueAtTime(opts.freq || 440, t0);
     if (opts.freqEnd) osc.frequency.linearRampToValueAtTime(opts.freqEnd, t0 + duration);
 
     gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(Math.max(gainVal, 0.0001), t0 + 0.01);
-    gain.gain.setValueAtTime(Math.max(gainVal, 0.0001), t0 + duration * 0.6);
+    gain.gain.exponentialRampToValueAtTime(Math.max(gainVal, 0.0001), t0 + peakTime);
+    gain.gain.setValueAtTime(Math.max(gainVal, 0.0001), t0 + holdTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
 
     osc.connect(gain);
     gain.connect(c.destination);
     osc.start(t0);
     osc.stop(t0 + duration + 0.02);
+
+    osc.onended = function () {
+      osc.disconnect();
+      gain.disconnect();
+    };
   }
 
   function playSound(name) {
@@ -227,22 +264,96 @@
     if (prev == null && row.status != null && initialized) playForStatus(row.status);
   }
 
+  function onFirstPage() {
+    var page = parseInt(new URLSearchParams(window.location.search).get('page') || '1', 10);
+    return page === 1;
+  }
+
   function applySnapshot(rows) {
     var next = Object.create(null);
+    var wasInitialized = initialized;
+    var changed = false;
+
     rows.forEach(function (row) {
+      if (wasInitialized) {
+        var prev = known[row.id];
+        if (prev === undefined || prev !== row.status) changed = true;
+      }
       diffEvent(row);
       next[row.id] = row.status;
     });
+
     known = next;
     if (!initialized) initialized = true;
+    return wasInitialized && changed;
+  }
+
+  function refreshPageData() {
+    var url = window.location.href;
+    fetch(url)
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+
+        // 1. Replace requests table
+        var newTable = doc.querySelector('table.requests');
+        var oldTable = document.querySelector('table.requests');
+        if (newTable && oldTable) {
+          oldTable.parentNode.replaceChild(newTable, oldTable);
+        }
+
+        // 2. Replace pagination controls
+        var newPaginations = doc.querySelectorAll('.pagination');
+        var oldPaginations = document.querySelectorAll('.pagination');
+        if (newPaginations.length === oldPaginations.length) {
+          for (var i = 0; i < oldPaginations.length; i++) {
+            oldPaginations[i].parentNode.replaceChild(newPaginations[i], oldPaginations[i]);
+          }
+        }
+
+        // 3. Replace settings badges (Global Pause and Speed Limiter)
+        var newPause = doc.querySelector('.settings-card-pause');
+        var oldPause = document.querySelector('.settings-card-pause');
+        if (newPause && oldPause) {
+          oldPause.parentNode.replaceChild(newPause, oldPause);
+        }
+        var newSpeed = doc.querySelector('.settings-card-speed');
+        var oldSpeed = document.querySelector('.settings-card-speed');
+        if (newSpeed && oldSpeed) {
+          oldSpeed.parentNode.replaceChild(newSpeed, oldSpeed);
+        }
+
+        // 4. Replace rate limits section
+        var newRateLimits = doc.querySelector('.rate-limits');
+        var oldRateLimits = document.querySelector('.rate-limits');
+        if (newRateLimits && oldRateLimits) {
+          oldRateLimits.parentNode.replaceChild(newRateLimits, oldRateLimits);
+          if (window.fetchCharts) window.fetchCharts();
+        } else if (newRateLimits && !oldRateLimits) {
+          var settingsRow = document.querySelector('.settings-row');
+          if (settingsRow) {
+            settingsRow.parentNode.insertBefore(newRateLimits, settingsRow);
+            if (window.fetchCharts) window.fetchCharts();
+          }
+        } else if (!newRateLimits && oldRateLimits) {
+          oldRateLimits.parentNode.removeChild(oldRateLimits);
+        }
+      })
+      .catch(function (err) {
+        console.error("Failed to refresh page data:", err);
+      });
   }
 
   function fetchEvents() {
-    if (document.hidden || !isEnabled()) return;
+    if (document.hidden) return;
     fetch('/ui/api/request-events')
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data && data.requests) applySnapshot(data.requests);
+        if (!data || !data.requests) return;
+        if (applySnapshot(data.requests) && onFirstPage()) {
+          refreshPageData();
+        }
       })
       .catch(function () {});
   }
@@ -251,13 +362,6 @@
     if (pollTimer) clearInterval(pollTimer);
     fetchEvents();
     pollTimer = setInterval(fetchEvents, POLL_MS);
-  }
-
-  function stopPolling() {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
   }
 
   function setAllEvents(on) {
@@ -282,8 +386,6 @@
     if (master) {
       master.addEventListener('change', function () {
         setEnabled(master.checked);
-        if (master.checked) startPolling();
-        else stopPolling();
       });
     }
 
@@ -316,19 +418,25 @@
       });
     }
 
-    document.body.addEventListener('click', function unlock() {
+    var unlockEvents = ['click', 'keydown', 'mousedown', 'touchstart'];
+    function unlock() {
       resumeContext();
-      document.body.removeEventListener('click', unlock);
-    }, { once: true });
+      unlockEvents.forEach(function (e) {
+        document.body.removeEventListener(e, unlock);
+      });
+    }
+    unlockEvents.forEach(function (e) {
+      document.body.addEventListener(e, unlock, { once: true });
+    });
   }
 
   function init() {
     bindControls();
-    if (isEnabled()) startPolling();
+    startPolling();
   }
 
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden && isEnabled()) fetchEvents();
+    if (!document.hidden) fetchEvents();
   });
 
   if (document.readyState === 'loading') {
