@@ -94,7 +94,7 @@ No matching alias returns 400. Rate-limited aliases return 429.
 
 | URL | Description |
 |---|---|
-| `/ui/` | Request log, per-alias rate limit cards (rolling 24h), live charts, global pause/speed controls |
+| `/ui/` | Request log, per-alias rate limit cards (rolling 24h), live charts, global pause/rate limit controls |
 | `/ui/request/:id` | Single-request detail with formatted JSON bodies |
 | `/ui/aliases` | Manage aliases and daily limits |
 | `/ui/aliases/info` | How aliases work + curl example |

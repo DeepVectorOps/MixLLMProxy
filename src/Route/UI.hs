@@ -256,41 +256,43 @@ settingsSection s = do
       slowValText = case mSlow of { Just v -> showT v; Nothing -> "2.0" }
   div_ [class_ "settings-row"] $ do
     
-    -- Row 1: Global Pause
+    -- Card 1: Global Pause
     div_ [class_ "settings-card settings-card-pause"] $ do
-      div_ [class_ "flex-row"] $ do
-        span_ [class_ "icon-blue"] (icon "ph-power")
-        strong_ "Global Pause"
+      div_ [class_ "settings-card-header"] $ do
+        div_ [class_ "settings-card-title-group"] $ do
+          span_ [class_ "icon-blue"] (icon "ph-power")
+          strong_ "Global Pause"
         if paused
           then span_ [class_ "badge badge-red"] "PAUSED"
           else span_ [class_ "badge badge-green"] "ACTIVE"
-        span_ [class_ "desc-text"] "— Temporarily pause all proxy traffic"
+      p_ [class_ "settings-card-desc"] "Temporarily pause all incoming proxy traffic."
       
-      form_ [action_ "/ui/global-settings/toggle-pause", method_ "post", class_ "form-inline"] $ do
+      form_ [action_ "/ui/global-settings/toggle-pause", method_ "post", class_ "settings-card-actions"] $ do
         if paused
-          then button_ [type_ "submit", class_ "btn-green"] (icon "ph-play" >> " Resume API")
-          else button_ [type_ "submit", class_ "btn-red"] (icon "ph-pause" >> " Pause API")
+          then button_ [type_ "submit", class_ "btn"] (icon "ph-play" >> " Resume API")
+          else button_ [type_ "submit", class_ "btn"] (icon "ph-pause" >> " Pause API")
 
-    -- Row 2: Speed Limiter
+    -- Card 2: Global Rate Limit
     div_ [class_ "settings-card settings-card-speed"] $ do
-      div_ [class_ "flex-row"] $ do
-        span_ [class_ "icon-yellow"] (icon "ph-gauge")
-        strong_ "Speed Limiter"
+      div_ [class_ "settings-card-header"] $ do
+        div_ [class_ "settings-card-title-group"] $ do
+          span_ [class_ "icon-yellow"] (icon "ph-gauge")
+          strong_ "Global Rate Limit"
         if isSlowActive
-          then span_ [class_ "badge badge-yellow"] (toHtml ("SLOWED (" <> slowValText <> "/s)"))
+          then span_ [class_ "badge badge-yellow"] (toHtml (slowValText <> "/s"))
           else span_ [class_ "badge badge-green"] "UNLIMITED"
-        span_ [class_ "desc-text"] "— Enforce rate limits across all model endpoints"
+      p_ [class_ "settings-card-desc"] "Enforce rate limits across all model endpoints."
 
-      div_ [class_ "flex-row-gap6"] $ do
+      div_ [class_ "settings-card-actions"] $ do
         form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", class_ "flex-form"] $ do
           input_ [type_ "text", name_ "slow_limit", value_ (if isSlowActive then slowValText else ""), placeholder_ "2.0", class_ "input-sm"]
-          span_ [class_ "label-sm", style_ "margin-right: 4px;"] "req/s"
+          span_ [class_ "label-sm"] "req/s"
           button_ [type_ "submit", class_ "btn-sm"] "Set Limit"
         
         if isSlowActive
-          then form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", class_ "btn-ghost"] $ do
+          then form_ [action_ "/ui/global-settings/set-slow-limit", method_ "post", class_ "form-inline"] $ do
             input_ [type_ "hidden", name_ "slow_limit", value_ ""]
-            button_ [type_ "submit", class_ "btn-red"] "Disable"
+            button_ [type_ "submit", class_ "btn-red btn-sm"] "Disable"
           else ""
 
     soundSettingsCard
@@ -316,25 +318,27 @@ soundEventCheckbox (SoundEventOption eid label) =
 soundSettingsCard :: Html ()
 soundSettingsCard =
   div_ [class_ "settings-card settings-card-sounds"] $ do
-    div_ [class_ "flex-row"] $ do
-      span_ [class_ "icon-purple"] (icon "ph-speaker-high")
-      strong_ "Event Sounds"
+    div_ [class_ "settings-card-header"] $ do
+      div_ [class_ "settings-card-title-group"] $ do
+        span_ [class_ "icon-purple"] (icon "ph-speaker-high")
+        strong_ "Event Sounds"
       span_ [id_ "sound-status-badge", class_ "badge badge-green"] "ON"
-      span_ [class_ "desc-text"] "— Synth alerts for new, completed, and failed requests"
-    div_ [class_ "flex-row-gap6 sound-controls"] $ do
-      label_ [class_ "sound-toggle-label"] $ do
-        input_ [type_ "checkbox", id_ "sound-enabled", checked_]
-        " Sounds on"
-      label_ [class_ "sound-volume-label"] $ do
-        span_ "Volume"
-        input_ [type_ "range", id_ "sound-volume", class_ "sound-volume", min_ "0", max_ "100", value_ "25"]
-      button_ [type_ "button", id_ "sound-test", class_ "btn-sm"] "Test"
-    div_ [class_ "sound-event-filters", id_ "sound-event-filters"] $ do
-      span_ [class_ "sound-event-label"] "Play:"
-      label_ [class_ "sound-event-option"] $ do
-        input_ [type_ "checkbox", id_ "sound-event-all", checked_]
-        " All"
-      mapM_ soundEventCheckbox soundEventOptions
+    p_ [class_ "settings-card-desc"] "Synth alerts for new, completed, and failed requests."
+    div_ [class_ "sound-settings-controls"] $ do
+      div_ [class_ "sound-row-1"] $ do
+        label_ [class_ "sound-toggle-label"] $ do
+          input_ [type_ "checkbox", id_ "sound-enabled", checked_]
+          " Sounds"
+        div_ [class_ "sound-volume-container"] $ do
+          span_ [class_ "label-sm"] "Vol"
+          input_ [type_ "range", id_ "sound-volume", class_ "sound-volume", min_ "0", max_ "100", value_ "25"]
+        button_ [type_ "button", id_ "sound-test", class_ "btn-sm"] "Test"
+      div_ [class_ "sound-event-filters", id_ "sound-event-filters"] $ do
+        span_ [class_ "sound-event-label"] "Play:"
+        label_ [class_ "sound-event-option"] $ do
+          input_ [type_ "checkbox", id_ "sound-event-all", checked_]
+          " All"
+        mapM_ soundEventCheckbox soundEventOptions
 
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> GlobalSettings -> Html ()
 page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration metric settings = do

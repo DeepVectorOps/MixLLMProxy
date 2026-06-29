@@ -312,7 +312,7 @@
           }
         }
 
-        // 3. Replace settings badges (Global Pause and Speed Limiter)
+        // 3. Replace settings badges (Global Pause and Global Rate Limit)
         var newPause = doc.querySelector('.settings-card-pause');
         var oldPause = document.querySelector('.settings-card-pause');
         if (newPause && oldPause) {
