@@ -9,6 +9,7 @@ import ChartJson (buildChartJson, chartWindowMinutes, chartBucketSeconds)
 import DB
   ( AliasChartRow(..)
   , LlmAlias(..)
+  , ResolvedAlias(..)
   , connectDB
   , getAliasRequestChartData
   , getAliasByName
@@ -132,7 +133,7 @@ runChartDbTest = do
   endpointId <- insertEndpoint conn (aliasName <> "-ep") "http://test" "key"
   insertAlias conn aliasName endpointId "model" Nothing Nothing
   alias <- getAliasByName conn aliasName >>= \case
-    Just a -> pure a
+    Just (ResolvedAlias a _ _) -> pure a
     Nothing -> error "inserted chart test alias not found"
   replicateM_ 3 $
     insertRequest conn "/api" "POST" Nothing (Just 200) Nothing 1.0 (Just "model") Nothing Nothing Nothing (Just aliasName)
