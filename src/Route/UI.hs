@@ -8,6 +8,7 @@ import Lucid
 import AppEnv (AppEnv(..), GlobalSettings(..), withPool)
 import DB (LlmRequest(..), LlmAlias(..), AliasUsage(..), getRecentRequestsFiltered, getRequest, countRequests, countRequestsFiltered, truncateRequests, truncateRequestsOlderThan, parseDuration, getAliasesWithUsage)
 import ChartJson (chartPollSeconds, chartSubtitle, loadChartJson)
+import RequestEventsJson (requestSoundPollSeconds, loadRequestEventsJson)
 import Data.IORef (readIORef, modifyIORef')
 import Text.Read (readMaybe)
 import Common
@@ -121,6 +122,10 @@ uiRoutes :: AppEnv -> ScottyM ()
 uiRoutes env = do
   get "/ui/api/alias-charts" $ do
     val <- liftIO $ withPool env loadChartJson
+    json val
+
+  get "/ui/api/request-events" $ do
+    val <- liftIO $ withPool env loadRequestEventsJson
     json val
 
   get "/ui/" $ do
@@ -288,6 +293,49 @@ settingsSection s = do
             button_ [type_ "submit", class_ "btn-red"] "Disable"
           else ""
 
+    soundSettingsCard
+
+data SoundEventOption = SoundEventOption
+  { seoId :: T.Text
+  , seoLabel :: T.Text
+  }
+
+soundEventOptions :: [SoundEventOption]
+soundEventOptions =
+  [ SoundEventOption "new_request" "New"
+  , SoundEventOption "completed" "Completed"
+  , SoundEventOption "error" "Error"
+  ]
+
+soundEventCheckbox :: SoundEventOption -> Html ()
+soundEventCheckbox (SoundEventOption eid label) =
+  label_ [class_ "sound-event-option"] $ do
+    input_ [type_ "checkbox", id_ ("sound-event-" <> eid), checked_, class_ "sound-event-item"]
+    toHtml (" " <> label)
+
+soundSettingsCard :: Html ()
+soundSettingsCard =
+  div_ [class_ "settings-card settings-card-sounds"] $ do
+    div_ [class_ "flex-row"] $ do
+      span_ [class_ "icon-purple"] (icon "ph-speaker-high")
+      strong_ "Event Sounds"
+      span_ [id_ "sound-status-badge", class_ "badge badge-green"] "ON"
+      span_ [class_ "desc-text"] "— Synth alerts for new, completed, and failed requests"
+    div_ [class_ "flex-row-gap6 sound-controls"] $ do
+      label_ [class_ "sound-toggle-label"] $ do
+        input_ [type_ "checkbox", id_ "sound-enabled", checked_]
+        " Sounds on"
+      label_ [class_ "sound-volume-label"] $ do
+        span_ "Volume"
+        input_ [type_ "range", id_ "sound-volume", class_ "sound-volume", min_ "0", max_ "100", value_ "25"]
+      button_ [type_ "button", id_ "sound-test", class_ "btn-sm"] "Test"
+    div_ [class_ "sound-event-filters", id_ "sound-event-filters"] $ do
+      span_ [class_ "sound-event-label"] "Play:"
+      label_ [class_ "sound-event-option"] $ do
+        input_ [type_ "checkbox", id_ "sound-event-all", checked_]
+        " All"
+      mapM_ soundEventCheckbox soundEventOptions
+
 page :: Maybe TL.Text -> [LlmRequest] -> Int -> Int -> Int -> [AliasUsage] -> T.Text -> T.Text -> T.Text -> T.Text -> T.Text -> MetricView -> GlobalSettings -> Html ()
 page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir searchField searchQuery duration metric settings = do
     pageHeader (hostFromHeader host) (Just $ div_ [class_ "truncate-actions"] $ do
@@ -322,6 +370,7 @@ page host requests pageNum totalPages totalResults aliasUsages sortBy sortDir se
       tbody_ $ mapM_ (requestRow metric) requests
     pagination pageNum totalPages totalResults sortBy sortDir searchField searchQuery duration metric
     when (not (null aliasUsages)) aliasChartScripts
+    requestSoundScripts
     script_ clickScript
 
 requestRow :: MetricView -> LlmRequest -> Html ()
@@ -391,12 +440,21 @@ statusClass (Just s)
   | otherwise = ""
 statusClass Nothing = ""
 
+pollMsScript :: T.Text -> Int -> Html ()
+pollMsScript windowVar seconds =
+  script_ [type_ "text/javascript"] $
+    "window." <> windowVar <> "=" <> showT (seconds * 1000) <> ";"
+
 aliasChartScripts :: Html ()
 aliasChartScripts = do
-  script_ [type_ "text/javascript"] $
-    "window.CHART_POLL_MS=" <> showT (chartPollSeconds * 1000) <> ";"
+  pollMsScript "CHART_POLL_MS" chartPollSeconds
   script_ [src_ "https://cdn.jsdelivr.net/npm/chart.js@4"] ("" :: T.Text)
   script_ [src_ "/alias-charts.js"] ("" :: T.Text)
+
+requestSoundScripts :: Html ()
+requestSoundScripts = do
+  pollMsScript "REQUEST_SOUND_POLL_MS" requestSoundPollSeconds
+  script_ [src_ "/request-sounds.js"] ("" :: T.Text)
 
 clickScript :: T.Text
 clickScript = T.intercalate "\n"

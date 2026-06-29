@@ -13,6 +13,7 @@ library:
     - Common
     - DB
     - ChartJson
+    - RequestEventsJson
     - Route.Aliases
     - Route.OpenAI
     - Route.UI

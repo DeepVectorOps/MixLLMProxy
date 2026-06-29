@@ -164,5 +164,14 @@ strong { color: #e6edf3; font-weight: 600; font-size: 13px; }
 .settings-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; justify-content: center; gap: 12px; flex: 1; }
 .settings-card-pause { min-width: 320px; max-width: 500px; }
 .settings-card-speed { min-width: 380px; max-width: 540px; }
+.settings-card-sounds { min-width: 360px; max-width: 640px; flex-direction: column; align-items: stretch; gap: 8px; }
+.icon-purple { color: #a371f7; font-size: 14px; display: inline-flex; align-items: center; }
+.sound-controls { flex-wrap: wrap; }
+.sound-toggle-label, .sound-volume-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.9rem; color: #c9d1d9; }
+.sound-volume { width: 90px; accent-color: #a371f7; }
+.sound-event-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 0.9rem; color: #c9d1d9; }
+.sound-event-label { color: #8b949e; margin-right: 2px; }
+.sound-event-option { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.sound-event-filters.is-muted { opacity: 0.45; pointer-events: none; }
 
 .btn-ghost { background: none; border: none; color: inherit; cursor: pointer; padding: 0; margin: 0; display: inline; }

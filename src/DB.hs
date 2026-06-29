@@ -27,6 +27,8 @@ module DB
   , getAliasUsage24h
   , getAliasRequestChartData
   , AliasChartRow(..)
+  , RequestEvent(..)
+  , getRecentRequestEvents
   , parseDuration
   ) where
 
@@ -104,6 +106,15 @@ data AliasChartRow = AliasChartRow
 instance FromRow AliasChartRow where
   fromRow = AliasChartRow <$> field <*> field <*> field <*> field
 
+data RequestEvent = RequestEvent
+  { reId :: Int
+  , reStatus :: Maybe Int
+  , reAliasName :: Maybe Text
+  } deriving (Show, Generic)
+
+instance FromRow RequestEvent where
+  fromRow = RequestEvent <$> field <*> field <*> field
+
 requestColumns :: Query
 requestColumns = fromString $ cs [text|
   id, endpoint, method, request_body, response_status, response_body, latency_ms, model, prompt_tokens, completion_tokens, total_tokens, created_at, alias_name
@@ -159,6 +170,19 @@ updateRequest conn rid respStatus respBody latencyMs model promptT complT totalT
 
 getRecentRequests :: Connection -> Int -> Int -> IO [LlmRequest]
 getRecentRequests conn limit offset = query conn ("SELECT " <> requestColumns <> " FROM llm_requests ORDER BY created_at DESC LIMIT ? OFFSET ?") (limit, offset)
+
+getRecentRequestEvents :: Connection -> Int -> IO [RequestEvent]
+getRecentRequestEvents conn limit =
+  query conn (fromString $ cs [text|
+    SELECT id, response_status, alias_name
+    FROM (
+      SELECT id, response_status, alias_name
+      FROM llm_requests
+      ORDER BY id DESC
+      LIMIT ?
+    ) recent
+    ORDER BY id ASC
+  |]) (Only limit)
 
 getSortSql :: Text -> Text -> Query
 getSortSql sortBy sortDir =

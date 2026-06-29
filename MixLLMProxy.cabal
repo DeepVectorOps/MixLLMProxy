@@ -17,11 +17,12 @@ library
       AppEnv
       Common
       DB
-      Main
+      ChartJson
       Route.Aliases
       Route.OpenAI
       Route.UI
   other-modules:
+      Main
       Paths_MixLLMProxy
   hs-source-dirs:
       src
@@ -52,6 +53,7 @@ executable app
   main-is: Main.hs
   other-modules:
       AppEnv
+      ChartJson
       Common
       DB
       Route.Aliases
@@ -88,18 +90,22 @@ test-suite spec
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_MixLLMProxy
+      ChartJsonSpec
   hs-source-dirs:
       test
   build-depends:
       MixLLMProxy
+    , aeson
     , async
     , base
     , bytestring
     , http-client
     , http-types
     , network
+    , postgresql-simple
     , text
+    , time
+    , vector
     , wai
     , warp
   default-language: Haskell2010
