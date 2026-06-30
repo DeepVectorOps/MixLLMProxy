@@ -15,6 +15,7 @@ library:
     - ChartJson
     - RequestEventsJson
     - Route.Aliases
+    - Route.Debug
     - Route.OpenAI
     - Route.UI
   dependencies:

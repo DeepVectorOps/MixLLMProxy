@@ -11,6 +11,7 @@ import AppEnv (initAppEnv)
 import Route.OpenAI (openAIRoutes)
 import Route.UI (uiRoutes)
 import Route.Aliases (aliasesRoutes)
+import Route.Debug (debugRoutes)
 
 main :: IO ()
 main = do
@@ -20,5 +21,6 @@ main = do
     middleware logStdoutDev
     middleware $ staticPolicy (noDots >-> addBase "static")
     openAIRoutes env
+    debugRoutes env
     uiRoutes env
     aliasesRoutes env

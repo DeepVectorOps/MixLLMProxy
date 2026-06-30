@@ -16,7 +16,7 @@ Point your client at `http://localhost:8015/api/openai/v1/chat/completions` inst
 
 That makes day-to-day dev work much easier:
 
-- **Debug prompts** — search request/response bodies, open any call on `/ui/request/:id`, inspect JSON without adding logging to your app
+- **Debug prompts** — search request/response bodies, open any call on `/ui/request/:id`, or use the JSON debug API at `/debug/` (especially useful for coding agents that can't browse the UI)
 - **Watch cost and performance** — see token usage and latency per call; filter to the last 10 minutes while iterating
 - **Try models without code changes** — add or switch aliases in the UI (`gpt-4o` today, a cheap local model tomorrow); your app always sends the same alias name
 - **Compare providers** — run the same prompt against two aliases and diff the logged responses side by side
@@ -34,6 +34,7 @@ Your app only needs one base URL and stable alias names. Keys and downstream end
 - **Global controls** — pause all traffic (503) or enforce a global requests/sec limit from the dashboard
 - **Full request logging** — every proxy call stored in PostgreSQL with latency, tokens, status, and bodies
 - **Web UI** (`/ui/`) — searchable/sortable request log, per-alias rate limit cards, live request charts (last 10 min), request detail with JSON tree view
+- **Debug API** (`/debug/`) — self-documenting read-only JSON API for inspecting requests, aliases, endpoints, and proxy health without the UI
 - **Alias management** (`/ui/aliases`) — create, edit, duplicate, delete aliases
 
 ## Quick start
@@ -101,11 +102,37 @@ No matching alias returns 400. Rate-limited aliases return 429.
 
 The dashboard supports search (model, alias, bodies, status, …), time filters (`10m`, `1h`, `24h`, `7d`), column sorting, and pagination. Per-alias charts poll `/ui/api/alias-charts` every 5s.
 
+## Debug API
+
+Read-only JSON API for coding agents and CLI workflows. Start at `GET /debug/` — it returns a self-documenting catalog of every endpoint, with parameter descriptions and curl examples. The catalog is generated from the same metadata as the routes, so it stays in sync with the implementation.
+
+| Endpoint | Description |
+|---|---|
+| `GET /debug/` | Catalog of all debug endpoints (fetch this first) |
+| `GET /debug/summary` | Quick health: paused?, rate limit, total requests, errors in last 1h |
+| `GET /debug/settings` | Global pause and slow-limit state |
+| `GET /debug/requests` | Filtered/sorted request list (same params as the UI; bodies truncated to 200 chars) |
+| `GET /debug/requests/:id` | Full request detail with complete bodies |
+| `GET /debug/aliases` | Aliases with endpoint mapping, limits, and rolling 24h usage |
+| `GET /debug/endpoints` | Downstream endpoints (API keys redacted) |
+
+Example workflow:
+
+```bash
+curl http://localhost:8015/debug/                                    # discover endpoints
+curl http://localhost:8015/debug/summary                           # health check
+curl 'http://localhost:8015/debug/requests?duration=1h&search_field=status&search_query=429'
+curl http://localhost:8015/debug/requests/42                         # full bodies
+```
+
+`GET /debug/requests` accepts the same query params as the UI: `page`, `sort_by`, `sort_dir`, `search_field`, `search_query`, `duration`.
+
 ## API
 
 | Endpoint | Method | Description |
 |---|---|---|
 | `/api/openai/v1/chat/completions` | POST | Proxy chat completions |
+| `/debug/` | GET | Self-documenting debug API catalog (see [Debug API](#debug-api)) |
 | `/ui/api/alias-charts` | GET | JSON time-series data for dashboard charts |
 
 ## Development
@@ -129,7 +156,7 @@ Client → POST /api/openai/v1/chat/completions
               ↓
          PostgreSQL ← log request/response
               ↑
-         /ui/ dashboard
+         /ui/ dashboard  ·  /debug/ JSON API
 ```
 
 The `model` field in the request body is matched against alias names. On match, the proxy forwards with the alias's API key and configured downstream model. All requests are logged regardless of outcome.

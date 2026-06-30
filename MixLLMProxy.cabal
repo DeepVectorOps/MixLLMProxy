@@ -18,6 +18,7 @@ library
       Common
       DB
       ChartJson
+      RequestEventsJson
       Route.Aliases
       Route.OpenAI
       Route.UI
@@ -56,6 +57,7 @@ executable app
       ChartJson
       Common
       DB
+      RequestEventsJson
       Route.Aliases
       Route.OpenAI
       Route.UI
