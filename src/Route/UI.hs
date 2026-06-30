@@ -80,7 +80,28 @@ rateLimitCard sortBy sortDir duration metric u = do
     div_ [class_ "alias-chart-wrap"] $
       canvas_ [class_ "alias-chart", id_ ("chart-" <> showT (laId a))] ""
 
--- Rough chars/token ratio for limit bars (~0.5 tokens per char).
+{-
+WARNING / TODO: char limits here are a rough, pragmatic UI equivalent only.
+
+We have daily_token_limit in the DB but no daily_char_limit, so chars mode
+derives a display limit from the token cap using a fixed 2 chars/token ratio
+(~0.5 tokens per char). This is NOT how limits are enforced.
+
+Known issues with this approximation:
+  - Real tokenization varies wildly by model, language, and content type.
+    English prose is often ~4 chars/token; code/JSON can be much higher or lower.
+  - We count PostgreSQL text length (bytes/chars), not tokenizer output.
+    Unicode, emojis, and multi-byte characters do not map 1:1 to tokens.
+  - Usage sums length(request_body) + length(response_body), so JSON wrappers,
+    metadata, and transport overhead inflate the char count vs semantic content.
+  - Enforcement (see Route.OpenAI alias limit checks) still uses API-reported
+    total_tokens, so the chars bar can disagree with actual blocking behavior.
+  - Streaming/SSE responses may store partial bodies, skewing char totals.
+  - A single global ratio cannot be accurate across aliases/models/endpoints.
+
+If this becomes misleading in practice, add a real daily_char_limit column or
+drop the derived limit bar in chars mode and show usage only.
+-}
 charLimitFromTokens :: Int -> Int
 charLimitFromTokens tokLimit = tokLimit * 2
 
