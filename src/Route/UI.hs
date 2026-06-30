@@ -69,15 +69,20 @@ rateLimitCard :: T.Text -> T.Text -> T.Text -> MetricView -> AliasUsage -> Html 
 rateLimitCard sortBy sortDir duration metric u = do
   let a = auAlias u
       reqCount = auRequestCount u
-      tokCount = auTokenCount u
       filterUrl = makeUrl 1 sortBy sortDir "alias" (laName a) duration metric
   div_ [class_ "rate-limit-card"] $ do
     div_ [class_ "rate-limit-name"] $
       rateLimitAliasHeader (Just filterUrl) a
     limitBar "Requests" reqCount (laDailyRequestLimit a)
-    limitBar "Tokens" tokCount (laDailyTokenLimit a)
+    case metric of
+      Chars -> limitBar "Chars" (auCharCount u) (charLimitFromTokens <$> laDailyTokenLimit a)
+      Tokens -> limitBar "Tokens" (auTokenCount u) (laDailyTokenLimit a)
     div_ [class_ "alias-chart-wrap"] $
       canvas_ [class_ "alias-chart", id_ ("chart-" <> showT (laId a))] ""
+
+-- Rough chars/token ratio for limit bars (~0.5 tokens per char).
+charLimitFromTokens :: Int -> Int
+charLimitFromTokens tokLimit = tokLimit * 2
 
 fmtLimitNum :: Int -> T.Text
 fmtLimitNum n

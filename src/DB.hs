@@ -119,10 +119,11 @@ data AliasUsage = AliasUsage
   { auAlias :: LlmAlias
   , auRequestCount :: Int
   , auTokenCount :: Int
+  , auCharCount :: Int
   } deriving (Show, Generic)
 
 instance FromRow AliasUsage where
-  fromRow = AliasUsage <$> fromRow <*> field <*> field
+  fromRow = AliasUsage <$> fromRow <*> field <*> field <*> field
 
 data AliasChartRow = AliasChartRow
   { acrAliasId :: Int
@@ -455,11 +456,12 @@ getAliasesWithUsage :: Connection -> IO [AliasUsage]
 getAliasesWithUsage conn =
   query_ conn (fromString $ cs [text|
     SELECT a.id, a.name, a.endpoint_id, e.name, a.model, a.created_at, a.daily_token_limit, a.daily_request_limit,
-           COALESCE(r.req_count, 0), COALESCE(r.token_count, 0)
+           COALESCE(r.req_count, 0), COALESCE(r.token_count, 0), COALESCE(r.char_count, 0)
     FROM aliases a
     JOIN endpoints e ON e.id = a.endpoint_id
     LEFT JOIN (
-      SELECT alias_name, COUNT(*) AS req_count, COALESCE(SUM(total_tokens), 0) AS token_count
+      SELECT alias_name, COUNT(*) AS req_count, COALESCE(SUM(total_tokens), 0) AS token_count,
+             COALESCE(SUM(length(request_body) + length(response_body)), 0) AS char_count
       FROM llm_requests
       WHERE created_at >= NOW() - INTERVAL '24 hours'
       GROUP BY alias_name
